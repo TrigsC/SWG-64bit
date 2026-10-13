@@ -648,7 +648,799 @@ void runCommandResponseCapture(soe::SoeSession& zoneSession, soe::MessageDispatc
 
 // Long-lived capture for HarvesterObject BASE7's ACTIVE state (extraction
 // rate, real hopper accumulation). Unlike runCommandResponseCapture (a
-// bounded ~15s conne…10410 tokens truncated…                                     uint32_t galaxyId) {
+// bounded ~15s connect-command-disconnect window), this stays connected for
+// `durationSeconds` and periodically re-sends /synchronizeduilisten every
+// `resyncIntervalSeconds` - required because the server auto-deactivates a
+// harvester roughly 100s after its "operator" stops listening (a real,
+// live-confirmed game mechanic, not a bug - see KNOWN_UNKNOWNS.md's
+// "HarvesterObject BASE7" entry). `resyncIntervalSeconds` must stay well
+// under that ~100s window.
+//
+// Polls and prints `harvesterId`'s decoded state (extraction rate, hopper
+// size/contents, active flag) out of the real worldmodel::ObjectStore after
+// each resync, rather than hex-dumping raw baseline/delta bytes via a
+// separate local dispatcher the way this function originally did. That
+// original design predated BASE7's delta decoder - written the same day
+// Phase 9 started, before `applyHarvesterObjectBaseline7Delta` existed, back
+// when this really was "capturing raw bytes for a type that isn't decoded
+// yet." HarvesterObject BASE7's baseline (tag "HINO") and delta (tag "INSO")
+// are now both registered on `objectStore` (see ObjectStore.cpp), so hex
+// output would only ever show unrelated unknown traffic, not the harvester
+// itself - and the same forwarding-kill bug fixed in
+// runCommandResponseCapture() (see KNOWN_UNKNOWNS.md's bug 1.1 entry) applied
+// here too via the exact same pattern (a local ObjectStateDispatcher +
+// `dispatcher.off(kBaselinesMessageHash)`/`off(kDeltasMessageHash)` at the
+// end, clobbering main()'s permanent forwarding into the real ObjectStore).
+// Fixed 2026-07-18 by switching to this poll-based design instead of
+// reproducing bug 1.1's exact fix here: `objectStore`'s real decode is a
+// strictly better data source now than raw hex ever was, and this function
+// never needs to touch `kBaselinesMessageHash`/`kDeltasMessageHash` at all
+// this way.
+void runHarvesterWatch(soe::SoeSession& zoneSession, soe::MessageDispatcher& dispatcher, bool& failed,
+                        uint64_t characterId, uint64_t harvesterId, int durationSeconds,
+                        int resyncIntervalSeconds, const worldmodel::ObjectStore& objectStore) {
+    auto printState = [&](const char* when) {
+        const auto* installation = objectStore.findAs<worldmodel::InstallationObject>(harvesterId);
+        if (installation == nullptr || !installation->base7.has_value()) {
+            std::cout << "[HARVESTER WATCH] " << when << ": no BASE7 state yet for objectId="
+                       << harvesterId << "\n";
+            return;
+        }
+        const auto& base7 = *installation->base7;
+        std::cout << "[HARVESTER WATCH] " << when << ": objectId=" << harvesterId
+                   << " isActive=" << base7.isActive << " extractionRateMax="
+                   << base7.extractionRateMax << " actualExtractRate=" << base7.actualExtractRate
+                   << " hopperSize=" << base7.hopperSize << " hopperSizeMax=" << base7.hopperSizeMax
+                   << " hopperEntries=" << base7.hopperList.size() << "\n";
+        for (const auto& entry : base7.hopperList) {
+            std::cout << "[HARVESTER WATCH]   hopper: resourceSpawnId=" << entry.resourceSpawnId
+                       << " quantity=" << entry.quantity << "\n";
+        }
+    };
+
+    auto sendResync = [&]() {
+        std::cout << "[HARVESTER WATCH] sending synchronizeduilisten to objectId=" << harvesterId
+                   << "...\n";
+        zoneSession.sendMessage(swgproto::buildCommandQueueEnqueue(
+            characterId, 1, "synchronizeduilisten", harvesterId, std::u16string()));
+    };
+
+    std::cout << "\n[HARVESTER WATCH] watching objectId=" << harvesterId << " for " << durationSeconds
+               << "s, resyncing every " << resyncIntervalSeconds << "s...\n";
+    printState("before");
+    sendResync();
+
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(durationSeconds);
+    auto nextResync = std::chrono::steady_clock::now() + std::chrono::seconds(resyncIntervalSeconds);
+    auto timeUp = [&] { return std::chrono::steady_clock::now() >= deadline; };
+
+    while (!timeUp() && !failed) {
+        if (std::chrono::steady_clock::now() >= nextResync) {
+            printState("resync tick");
+            sendResync();
+            nextResync = std::chrono::steady_clock::now() + std::chrono::seconds(resyncIntervalSeconds);
+        }
+        try {
+            pumpUntil(zoneSession, dispatcher, failed,
+                      [&] { return timeUp() || std::chrono::steady_clock::now() >= nextResync; });
+        } catch (const soe::TimeoutError&) {
+        }
+    }
+
+    printState("final");
+    std::cout << "[HARVESTER WATCH] done.\n";
+}
+
+
+// Interactive combat-capture mode: after zone-in, waits for the user to type
+// exactly "go" (start recording) and "stop" (end + print a summary) on
+// stdin, via a small dedicated input thread so typing doesn't block the
+// network pump loop. Deliberately built for a one-off live data-gathering
+// session (user plays for real via the actual game client while this
+// headless client observes nearby broadcast traffic) - registers ONLY the
+// ObjControllerMessage handler (no baseline/tracking/movement handlers),
+// matching the "clean capture, only ObjectControllerMessage traffic"
+// request. Note: if the connection drops before "stop" is typed, the input
+// thread stays blocked on stdin until the user types something - acceptable
+// for an interactive tool the user is actively driving, not worth extra
+// complexity to guard against.
+//
+// Builds its OWN local swgproto::ObjControllerDispatcher (rather than
+// reusing the shared one main() passes to zoneInAsCharacter/observeMovement)
+// since capture mode's needs are a real superset: every known sub-type
+// still gets decoded+printed via the same shared
+// clientcommon::registerObjControllerHandlers() used everywhere else (with
+// the "[CAPTURE] " prefix, and an onDecoded hook for per-type counting),
+// but capture mode ALSO needs to count and hex-dump UNKNOWN sub-types
+// (the ones this capture exists to investigate) via onUnknown() - behavior
+// specific enough to this one feature that it isn't part of the shared
+// clientcommon registration.
+void runObjControllerCapture(soe::SoeSession& zoneSession, soe::MessageDispatcher& dispatcher,
+                              bool& failed) {
+    ObjControllerCapture capture;
+    swgproto::ObjControllerDispatcher objControllerDispatcher;
+    clientcommon::registerObjControllerHandlers(
+        objControllerDispatcher, std::cout, "[CAPTURE] ",
+        [&capture](const swgproto::ObjControllerMessage& envelope) {
+            ++capture.countsByType[envelope.header2];
+        });
+    objControllerDispatcher.onUnknown(
+        [&capture](const swgproto::ObjControllerMessage& envelope, soe::PacketBuffer& buf) {
+            ++capture.countsByType[envelope.header2];
+            auto bytes = buf.readBytes(buf.remaining());
+            std::cout << "[CAPTURE] UNKNOWN header1=0x" << std::hex << envelope.header1
+                       << " header2=0x" << envelope.header2 << std::dec
+                       << " objectId=" << envelope.objectId << " (" << bytes.size()
+                       << " bytes): ";
+            clientcommon::printHexBytes(bytes);
+            std::cout << "\n";
+
+            auto& samples = capture.unknownSamples[envelope.header2];
+            if (samples.size() < ObjControllerCapture::kMaxSamplesPerType) {
+                samples.push_back(bytes);
+            }
+        });
+
+    std::thread inputThread([&capture] {
+        std::string line;
+        while (std::getline(std::cin, line)) {
+            if (line == "go" && !capture.capturing.load()) {
+                capture.capturing.store(true);
+                std::cout << "\n>>> Capture STARTED - recording ObjControllerMessage traffic "
+                             "<<<\n";
+            } else if (line == "stop") {
+                capture.stopRequested.store(true);
+                std::cout << "\n>>> Capture STOPPED <<<\n";
+                break;
+            }
+        }
+    });
+
+    // The "only record after 'go'" gate lives HERE, outside
+    // objControllerDispatcher entirely - it decides whether to dispatch at
+    // all, rather than threading a capturing check through every handler.
+    dispatcher.on(swgproto::kObjControllerMessageHash,
+                  [&capture, &objControllerDispatcher](soe::PacketBuffer& buf) {
+                      if (!capture.capturing.load()) {
+                          return;
+                      }
+                      objControllerDispatcher.dispatch(buf);
+                  });
+
+    std::cout << "\nReady for combat capture. Type 'go' to start recording "
+                 "ObjControllerMessage traffic, 'stop' when done.\n";
+
+    auto shouldStop = [&] { return capture.stopRequested.load(); };
+    while (!shouldStop() && !failed) {
+        try {
+            pumpUntil(zoneSession, dispatcher, failed, shouldStop);
+        } catch (const soe::TimeoutError&) {
+        }
+    }
+
+    dispatcher.off(swgproto::kObjControllerMessageHash);
+
+    if (inputThread.joinable()) {
+        inputThread.join();
+    }
+
+    std::cout << "\n=== Capture summary ===\n";
+    size_t total = 0;
+    for (const auto& [header2, count] : capture.countsByType) {
+        total += count;
+        std::cout << "  header2=0x" << std::hex << header2 << std::dec << " count=" << count
+                   << "\n";
+    }
+    std::cout << "Total: " << total << " ObjControllerMessage instances captured.\n";
+
+    if (!capture.unknownSamples.empty()) {
+        std::cout << "\nRaw samples for undecoded sub-types:\n";
+        for (const auto& [header2, samples] : capture.unknownSamples) {
+            std::cout << "  header2=0x" << std::hex << header2 << std::dec << ":\n";
+            for (const auto& bytes : samples) {
+                std::cout << "    (" << bytes.size() << " bytes): ";
+                clientcommon::printHexBytes(bytes);
+                std::cout << "\n";
+            }
+        }
+    }
+}
+
+// Runs the full headless character-creation sequence on an already
+// zone-authenticated session: optionally requests a server-suggested name
+// (if the caller didn't provide one), sends ClientCreateCharacter, and
+// waits for success/failure. Returns the new character's object ID via
+// `outObjectId`, the actual resolved name (server-suggested or as given)
+// via `outCharacterName` - needed so the caller can pass it to
+// zoneInAsCharacter's name cross-check the same way the existing-character
+// path already can from its login-time character list - and true/false via
+// the return value. See authenticateZoneSession's comment above for why
+// each sub-phase removes its own handlers before returning.
+bool createCharacterHeadless(soe::SoeSession& zoneSession, soe::MessageDispatcher& dispatcher,
+                              bool& failed, std::u16string characterName,
+                              const std::string& templateName, const std::string& profession,
+                              uint64_t& outObjectId, std::u16string& outCharacterName) {
+    if (characterName.empty()) {
+        zoneSession.sendMessage(swgproto::buildClientRandomNameRequestPacket(templateName));
+        std::cout << "Sent ClientRandomNameRequest\n";
+
+        bool gotName = false;
+        dispatcher.on(swgproto::kClientRandomNameResponseHash, [&](soe::PacketBuffer& buf) {
+            auto resp = swgproto::ClientRandomNameResponse::parse(buf);
+            characterName = resp.name;
+            std::cout << "ClientRandomNameResponse: name=\"" << toUtf8Preview(resp.name)
+                       << "\"\n";
+            gotName = true;
+        });
+
+        pumpUntil(zoneSession, dispatcher, failed, [&] { return gotName; });
+        dispatcher.off(swgproto::kClientRandomNameResponseHash);
+
+        if (failed) {
+            return false;
+        }
+    }
+
+    outCharacterName = characterName;
+
+    swgproto::ClientCreateCharacterParams params;
+    params.characterName = characterName;
+    params.templateName = templateName;
+    params.profession = profession;
+
+    zoneSession.sendMessage(swgproto::buildClientCreateCharacter(params));
+    std::cout << "Sent ClientCreateCharacter for \"" << toUtf8Preview(characterName) << "\"\n";
+
+    bool done = false;
+    bool success = false;
+
+    dispatcher.on(swgproto::kClientCreateCharacterSuccessHash, [&](soe::PacketBuffer& buf) {
+        auto result = swgproto::ClientCreateCharacterSuccess::parse(buf);
+        std::cout << "ClientCreateCharacterSuccess: objectId=" << result.objectId << "\n";
+        outObjectId = result.objectId;
+        success = true;
+        done = true;
+    });
+    dispatcher.on(swgproto::kClientCreateCharacterFailedHash, [&](soe::PacketBuffer& buf) {
+        auto result = swgproto::ClientCreateCharacterFailed::parse(buf);
+        std::cerr << "ClientCreateCharacterFailed: " << result.errorString << "\n";
+        done = true;
+    });
+
+    pumpUntil(zoneSession, dispatcher, failed, [&] { return done; });
+    dispatcher.off(swgproto::kClientCreateCharacterSuccessHash);
+    dispatcher.off(swgproto::kClientCreateCharacterFailedHash);
+
+    return success;
+}
+
+// ---- CLI parsing --------------------------------------------------------
+
+struct CliOptions {
+    // Explicit endpoint and account inputs; the native launcher reads the
+    // installed server configuration and supplies credentials over stdin.
+    std::string host; // Explicit endpoint; the Mac launcher reads swgemu_login.cfg.
+    bool credentialsStdin=false,connectionCheck=false,loginOnly=false,zoneCheck=false,help=false,nativeClient=false;
+    uint16_t port = 44453;
+    std::string username;
+    std::string password;
+    std::string characterName; // empty = default to the first character on the account
+
+    bool createCharacter = false;
+    std::string newCharName; // empty = request a server-suggested name
+    std::string charTemplate = "object/creature/player/human_male.iff";
+    std::string charProfession = "crafting_artisan";
+    int32_t galaxyId = -1; // -1 = default to the first galaxy in the list
+
+    bool interactiveCapture = false; // run runObjControllerCapture() instead of observeMovement()
+
+    std::string sendCommand;       // empty = don't send a command after zone-in
+    std::string commandArgs;       // command argument text, e.g. coordinates for /teleport
+    uint64_t commandTargetId = 0;  // 0 = no target (self/coordinate-based commands)
+
+    uint64_t watchHarvesterId = 0;  // 0 = disabled; runs runHarvesterWatch() instead of --send-command
+    int watchDurationSeconds = 300; // total time to stay connected and capture traffic
+    int watchResyncSeconds = 60;    // how often to re-send synchronizeduilisten (must stay well under
+                                     // the server's ~100s auto-deactivation window - see
+                                     // KNOWN_UNKNOWNS.md's "HarvesterObject BASE7" entry)
+
+    bool captureObjController = false; // hex-dump unrecognized ObjControllerMessage sub-types on
+                                        // the PERSISTENT connection-lifetime dispatcher, spanning
+                                        // zone-in through observeMovement - unlike
+                                        // --interactive-capture's own separate dispatcher (built
+                                        // fresh only once that mode starts), this catches
+                                        // sub-types that fire during zone-in itself (e.g.
+                                        // WeaponRanges, sent once per setWeapon() call, which
+                                        // includes the default-weapon assignment at character load).
+
+    bool visualize = false; // run runVisualizer() instead of observeMovement() - the crude
+                             // wireframe debug visualizer (Windows/D3D11 only, see
+                             // libs/renderer). Not built at all on non-Windows configurations.
+
+    // Phase 21 rest-pose investigation - see runVisualizer's own comment on
+    // autoRestPoseTestSecondsPerPhase. 0 = disabled (normal interactive
+    // visualizer). Only meaningful together with --visualize.
+    int autoRestPoseTestSecondsPerPhase = 0;
+    // Same idea, sweeping rotationCompositionVariant (0-5) instead - see
+    // runVisualizer's own comment on autoRestPoseVariantSweepSecondsPerPhase.
+    int autoRestPoseVariantSweepSecondsPerPhase = 0;
+    // Same idea again, sweeping bindRotationAxisFixVariant (0-6) - see
+    // runVisualizer's own comment on autoRestPoseBindAxisSweepSecondsPerPhase.
+    int autoRestPoseBindAxisSweepSecondsPerPhase = 0;
+    // The "isolate this back to no animation and retest" test - forces
+    // forceBindPoseOnly (pure computed `.skt` bind pose, zero clip
+    // involvement) across all 4 locked camera angles - see runVisualizer's
+    // own comment on autoRestPoseBindOnlySecondsPerPhase.
+    int autoRestPoseBindOnlySecondsPerPhase = 0;
+
+    // Real SWG client install directory - used by the visualizer's
+    // RealMeshResolver to open real .tre archives and render actual
+    // geometry instead of placeholder boxes where resolution succeeds.
+    // Defaults to this project's own dev machine's real install path;
+    // override with --client-path on any other machine.
+    std::string clientPath = "C:\\Program Files (x86)\\StarWarsGalaxies";
+
+    // General-purpose diagnostic (added Phase 20 for portal/floor-collision
+    // research, kept permanently) - dumps the real IFF chunk tree of ANY
+    // file inside data_other_00.tre (not just .pob despite the flag name),
+    // with hex payloads for small leaf chunks, and exits, no networking.
+    // Reusable for future format investigations.
+    std::string dumpPobPath;
+
+    // General-purpose diagnostic (added Phase 21 for animation-format
+    // research) - lists every real file path across the same set of
+    // archives RealSkeletalMeshResolver opens whose path contains this
+    // substring, and exits, no networking. Case-sensitive substring match.
+    std::string listFilesSubstring;
+
+    // General-purpose diagnostic (added Phase 21 for animation-format
+    // research) - extracts one real file's raw bytes (searching the same
+    // archive set as --dump-pob) to a local file on disk, unmodified, for
+    // exact offline byte-level analysis (e.g. a Python script) where the
+    // hex/ASCII pretty-printer in dumpIffTree() isn't precise enough.
+    std::string extractRawPath;
+    std::string extractRawOutFile;
+
+    // SWG Blender toolkit bridge (2026-07-24) - dumps this project's own
+    // ALREADY-DECODED skeleton + animation clip data (not raw bytes) to a
+    // plain JSON file, so an independent renderer (Blender) can compose the
+    // same data without reimplementing the .skt/.ans byte-level decode a
+    // second time. See tools/swg_blender_toolkit/NOTES.md.
+    std::string dumpAnimSkeletonPath;
+    std::string dumpAnimClipPath;
+    std::string dumpAnimJsonOut;
+};
+
+CliOptions parseCommandLine(int argc, char** argv) {
+    CliOptions opts;
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        auto next = [&](const char* name) -> std::string {
+            if (i + 1 >= argc) {
+                throw std::runtime_error(std::string("missing value for ") + name);
+            }
+            return argv[++i];
+        };
+        if (arg == "--host") opts.host = next("--host");
+        else if (arg == "--port") opts.port = clientcommon::parseLoginPort(next("--port"));
+        else if (arg == "--credentials-stdin") opts.credentialsStdin=true;
+        else if (arg == "--connection-check") opts.connectionCheck=true;
+        else if (arg == "--login-only") opts.loginOnly=true;
+        else if (arg == "--zone-check") opts.zoneCheck=true;
+        else if (arg == "--help") opts.help=true;
+        else if (arg == "--username") opts.username = next("--username");
+        else if (arg == "--password") opts.password = next("--password");
+        else if (arg == "--character-name") opts.characterName = next("--character-name");
+        else if (arg == "--create-character") opts.createCharacter = true;
+        else if (arg == "--char-name") opts.newCharName = next("--char-name");
+        else if (arg == "--char-template") opts.charTemplate = next("--char-template");
+        else if (arg == "--char-profession") opts.charProfession = next("--char-profession");
+        else if (arg == "--galaxy-id") opts.galaxyId = std::stoi(next("--galaxy-id"));
+        else if (arg == "--interactive-capture") opts.interactiveCapture = true;
+        else if (arg == "--send-command") opts.sendCommand = next("--send-command");
+        else if (arg == "--command-args") opts.commandArgs = next("--command-args");
+        else if (arg == "--command-target") opts.commandTargetId = std::stoull(next("--command-target"));
+        else if (arg == "--watch-harvester") opts.watchHarvesterId = std::stoull(next("--watch-harvester"));
+        else if (arg == "--watch-duration") opts.watchDurationSeconds = std::stoi(next("--watch-duration"));
+        else if (arg == "--watch-resync") opts.watchResyncSeconds = std::stoi(next("--watch-resync"));
+        else if (arg == "--capture-objcontroller") opts.captureObjController = true;
+        else if (arg == "--visualize") opts.visualize = true;
+        else if (arg == "--native-client") {opts.nativeClient=true;opts.visualize=true;}
+        else if (arg == "--rest-pose-ab-test")
+            opts.autoRestPoseTestSecondsPerPhase = std::stoi(next("--rest-pose-ab-test"));
+        else if (arg == "--rest-pose-variant-sweep")
+            opts.autoRestPoseVariantSweepSecondsPerPhase = std::stoi(next("--rest-pose-variant-sweep"));
+        else if (arg == "--rest-pose-bindaxis-sweep")
+            opts.autoRestPoseBindAxisSweepSecondsPerPhase = std::stoi(next("--rest-pose-bindaxis-sweep"));
+        else if (arg == "--rest-pose-bindonly-test")
+            opts.autoRestPoseBindOnlySecondsPerPhase = std::stoi(next("--rest-pose-bindonly-test"));
+        else if (arg == "--client-path") opts.clientPath = next("--client-path");
+        else if (arg == "--dump-pob") opts.dumpPobPath = next("--dump-pob");
+        else if (arg == "--list-files") opts.listFilesSubstring = next("--list-files");
+        else if (arg == "--extract-raw") opts.extractRawPath = next("--extract-raw");
+        else if (arg == "--extract-raw-out") opts.extractRawOutFile = next("--extract-raw-out");
+        else if (arg == "--dump-anim-skeleton") opts.dumpAnimSkeletonPath = next("--dump-anim-skeleton");
+        else if (arg == "--dump-anim-clip") opts.dumpAnimClipPath = next("--dump-anim-clip");
+        else if (arg == "--dump-anim-json-out") opts.dumpAnimJsonOut = next("--dump-anim-json-out");
+        else throw std::runtime_error("Unknown option: "+arg);
+    }
+
+    return opts;
+}
+
+// General-purpose diagnostic (added Phase 20, kept permanently) - prints
+// the real IFF chunk tree (tag, formType if a FORM, byte size, nesting
+// depth) rooted at `chunk`, and for any small leaf chunk, also hex-dumps
+// its raw payload bytes (plus a printable-ASCII rendering alongside, for
+// spotting real embedded strings without decoding hex by hand) so an
+// unfamiliar format can be reverse-engineered directly from real bytes.
+void dumpIffTree(const assets::IffChunk& chunk, int depth) {
+    auto tagToString = [](uint32_t tag) {
+        std::string s(4, ' ');
+        s[0] = static_cast<char>((tag >> 24) & 0xFF);
+        s[1] = static_cast<char>((tag >> 16) & 0xFF);
+        s[2] = static_cast<char>((tag >> 8) & 0xFF);
+        s[3] = static_cast<char>(tag & 0xFF);
+        return s;
+    };
+    std::string indent(depth * 2, ' ');
+    bool isForm = chunk.id == assets::kFormTag;
+    if (isForm) {
+        std::cout << indent << "FORM(" << tagToString(chunk.formType) << ") ["
+                  << chunk.children.size() << " children]\n";
+    } else {
+        std::cout << indent << "CHNK(" << tagToString(chunk.id) << ") [" << chunk.data.size()
+                   << " bytes]\n";
+    }
+    bool isSmallLeaf = !isForm && chunk.data.size() <= 3000;
+    if (isSmallLeaf) {
+        const auto& bytes = chunk.data;
+        std::cout << indent << "  raw bytes (" << bytes.size() << "): " << std::hex;
+        for (size_t i = 0; i < bytes.size(); ++i) {
+            if (i > 0 && i % 16 == 0) std::cout << "\n" << indent << "    ";
+            std::cout << std::setw(2) << std::setfill('0') << static_cast<int>(bytes.data()[i])
+                       << " ";
+        }
+        std::cout << std::dec << std::setfill(' ') << "\n";
+        std::cout << indent << "  ascii: ";
+        for (size_t i = 0; i < bytes.size(); ++i) {
+            uint8_t b = bytes.data()[i];
+            std::cout << (std::isprint(b) ? static_cast<char>(b) : '.');
+        }
+        std::cout << "\n";
+    }
+    for (const auto& child : chunk.children) {
+        dumpIffTree(child, depth + 1);
+    }
+}
+
+void runDumpPob(const CliOptions& opts) {
+    static const char* kArchiveNames[] = {
+        "data_other_00.tre",       "data_animation_00.tre",     "data_skeletal_mesh_00.tre",
+        "data_skeletal_mesh_01.tre", "data_static_mesh_00.tre", "data_static_mesh_01.tre",
+        "data_sku1_00.tre",        "data_sku1_01.tre",          "data_sku1_02.tre",
+        "data_sku1_03.tre",        "data_sku1_04.tre",          "data_sku1_05.tre",
+        "data_sku1_06.tre",        "data_sku1_07.tre",
+    };
+    for (const char* name : kArchiveNames) {
+        std::string archivePath = opts.clientPath + "\\" + name;
+        try {
+            assets::TreArchive archive(archivePath);
+            if (!archive.contains(opts.dumpPobPath)) {
+                continue;
+            }
+            std::cout << "(found in " << name << ")\n";
+            auto bytes = archive.extract(opts.dumpPobPath);
+            auto topLevel = assets::IffReader::parse(bytes);
+            for (const auto& chunk : topLevel) {
+                dumpIffTree(chunk, 0);
+            }
+            return;
+        } catch (const std::exception&) {
+            continue;
+        }
+    }
+    std::cerr << "dump-pob: not found in any known archive: " << opts.dumpPobPath << "\n";
+}
+
+// General-purpose diagnostic (Phase 21 animation research) - same archive
+// search as runDumpPob(), but writes the extracted file's raw bytes to disk
+// unmodified instead of pretty-printing, for exact offline byte analysis.
+void runExtractRaw(const CliOptions& opts) {
+    static const char* kArchiveNames[] = {
+        "data_other_00.tre",       "data_animation_00.tre",     "data_skeletal_mesh_00.tre",
+        "data_skeletal_mesh_01.tre", "data_static_mesh_00.tre", "data_static_mesh_01.tre",
+        "data_sku1_00.tre",        "data_sku1_01.tre",          "data_sku1_02.tre",
+        "data_sku1_03.tre",        "data_sku1_04.tre",          "data_sku1_05.tre",
+        "data_sku1_06.tre",        "data_sku1_07.tre",
+    };
+    for (const char* name : kArchiveNames) {
+        std::string archivePath = opts.clientPath + "\\" + name;
+        try {
+            assets::TreArchive archive(archivePath);
+            if (!archive.contains(opts.extractRawPath)) {
+                continue;
+            }
+            auto bytes = archive.extract(opts.extractRawPath);
+            std::ofstream out(opts.extractRawOutFile, std::ios::binary);
+            out.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+            std::cout << "extract-raw: wrote " << bytes.size() << " bytes from " << name << " to "
+                      << opts.extractRawOutFile << "\n";
+            return;
+        } catch (const std::exception&) {
+            continue;
+        }
+    }
+    std::cerr << "extract-raw: not found in any known archive: " << opts.extractRawPath << "\n";
+}
+
+// Minimal JSON string escaper - real bone names checked this project are
+// plain ASCII identifiers, so this only needs to handle the couple of
+// characters that would actually break JSON syntax, not full Unicode
+// escaping.
+std::string jsonEscape(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s) {
+        if (c == '"' || c == '\\') out.push_back('\\');
+        out.push_back(c);
+    }
+    return out;
+}
+
+// SWG Blender toolkit bridge (2026-07-24, see
+// tools/swg_blender_toolkit/NOTES.md) - dumps this project's own
+// ALREADY-DECODED skeleton (hierarchy + bind pose) and one animation clip's
+// ALREADY-DECODED per-bone keyframes to a plain JSON file. Deliberately
+// dumps decoded values, not raw bytes - the .skt/.ans byte-level parsing is
+// not in question, only the composition math applied afterward is, and
+// this lets an independent renderer (Blender) test exactly that without
+// reimplementing the byte-level decode a second time.
+void runDumpAnimJson(const CliOptions& opts) {
+    static const char* kArchiveNames[] = {
+        "data_other_00.tre",       "data_animation_00.tre",     "data_skeletal_mesh_00.tre",
+        "data_skeletal_mesh_01.tre", "data_sku1_00.tre",        "data_sku1_01.tre",
+        "data_sku1_02.tre",        "data_sku1_03.tre",          "data_sku1_04.tre",
+        "data_sku1_05.tre",        "data_sku1_06.tre",          "data_sku1_07.tre",
+    };
+    auto tryExtract = [&](const std::string& path) -> std::optional<std::vector<uint8_t>> {
+        for (const char* name : kArchiveNames) {
+            std::string archivePath = opts.clientPath + "\\" + name;
+            try {
+                assets::TreArchive archive(archivePath);
+                if (archive.contains(path)) {
+                    return archive.extract(path);
+                }
+            } catch (const std::exception&) {
+                continue;
+            }
+        }
+        return std::nullopt;
+    };
+
+    auto skeletonBytes = tryExtract(opts.dumpAnimSkeletonPath);
+    if (!skeletonBytes.has_value()) {
+        std::cerr << "dump-anim-json: skeleton not found: " << opts.dumpAnimSkeletonPath << "\n";
+        return;
+    }
+    auto clipBytes = tryExtract(opts.dumpAnimClipPath);
+    if (!clipBytes.has_value()) {
+        std::cerr << "dump-anim-json: clip not found: " << opts.dumpAnimClipPath << "\n";
+        return;
+    }
+
+    assets::SkeletonData skeleton;
+    assets::AnimationClipData clip;
+    try {
+        skeleton = assets::Skeleton::parse(*skeletonBytes);
+        clip = assets::AnimationClip::parse(*clipBytes);
+    } catch (const std::exception& e) {
+        std::cerr << "dump-anim-json: parse failed: " << e.what() << "\n";
+        return;
+    }
+
+    std::ofstream out(opts.dumpAnimJsonOut);
+    out << "{\n";
+    out << "  \"skeletonPath\": \"" << jsonEscape(opts.dumpAnimSkeletonPath) << "\",\n";
+    out << "  \"clipPath\": \"" << jsonEscape(opts.dumpAnimClipPath) << "\",\n";
+    out << "  \"bones\": [\n";
+    for (size_t i = 0; i < skeleton.bones.size(); ++i) {
+        const auto& b = skeleton.bones[i];
+        out << "    {\"name\": \"" << jsonEscape(b.name) << "\", \"parentIndex\": " << b.parentIndex
+            << ", \"preRotation\": [" << b.preRotation.x << ", " << b.preRotation.y << ", "
+            << b.preRotation.z << ", " << b.preRotation.w << "], \"postRotation\": ["
+            << b.postRotation.x << ", " << b.postRotation.y << ", " << b.postRotation.z << ", "
+            << b.postRotation.w << "], \"bindPoseRotation\": [" << b.bindPoseRotation.x << ", "
+            << b.bindPoseRotation.y << ", " << b.bindPoseRotation.z << ", " << b.bindPoseRotation.w
+            << "], \"bindTranslation\": [" << b.bindTranslation.x << ", "
+            << b.bindTranslation.y << ", " << b.bindTranslation.z << "]}";
+        out << (i + 1 < skeleton.bones.size() ? ",\n" : "\n");
+    }
+    out << "  ],\n";
+    out << "  \"clipBones\": [\n";
+    for (size_t i = 0; i < clip.bones.size(); ++i) {
+        const auto& cb = clip.bones[i];
+        out << "    {\"boneName\": \"" << jsonEscape(cb.boneName) << "\", \"hasStaticRotation\": "
+            << (cb.hasStaticRotation ? "true" : "false") << ", \"staticRotation\": [" << cb.staticRotation.x
+            << ", " << cb.staticRotation.y << ", " << cb.staticRotation.z << ", " << cb.staticRotation.w
+            << "], \"rotationKeyframes\": [\n";
+        for (size_t k = 0; k < cb.rotationKeyframes.size(); ++k) {
+            const auto& kf = cb.rotationKeyframes[k];
+            out << "      {\"frame\": " << kf.frame << ", \"rotation\": [" << kf.rotation.x << ", "
+                << kf.rotation.y << ", " << kf.rotation.z << ", " << kf.rotation.w << "]}";
+            out << (k + 1 < cb.rotationKeyframes.size() ? ",\n" : "\n");
+        }
+        out << "    ]}";
+        out << (i + 1 < clip.bones.size() ? ",\n" : "\n");
+    }
+    out << "  ]\n";
+    out << "}\n";
+    std::cout << "dump-anim-json: wrote " << skeleton.bones.size() << " skeleton bones, "
+               << clip.bones.size() << " animated clip bones to " << opts.dumpAnimJsonOut << "\n";
+}
+
+// General-purpose diagnostic (Phase 21 animation research) - lists every
+// real file path across the same archive set RealSkeletalMeshResolver
+// opens whose path contains opts.listFilesSubstring, then exits.
+void runListFiles(const CliOptions& opts) {
+    static const char* kArchiveNames[] = {
+        "data_other_00.tre",       "data_animation_00.tre",     "data_skeletal_mesh_00.tre",
+        "data_skeletal_mesh_01.tre", "data_sku1_00.tre",        "data_sku1_01.tre",
+        "data_sku1_02.tre",        "data_sku1_03.tre",          "data_sku1_04.tre",
+        "data_sku1_05.tre",        "data_sku1_06.tre",          "data_sku1_07.tre",
+    };
+    for (const char* name : kArchiveNames) {
+        std::string archivePath = opts.clientPath + "\\" + name;
+        try {
+            assets::TreArchive archive(archivePath);
+            for (const auto& file : archive.listFiles()) {
+                if (file.find(opts.listFilesSubstring) != std::string::npos) {
+                    std::cout << name << ": " << file << "\n";
+                }
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "list-files: failed to open " << name << ": " << e.what() << "\n";
+        }
+    }
+}
+
+// ---- Login (Milestone 1) -------------------------------------------------
+
+struct LoginResult {
+    swgproto::LoginClientToken clientToken;
+    swgproto::LoginEnumCluster galaxies;
+    swgproto::LoginClusterStatus galaxyStatus;
+    swgproto::EnumerateCharacterId characters;
+};
+
+// Sends AccountVersionMessage, collects the bundled login-response messages
+// via `dispatcher` (the login session's dispatcher, constructed once in
+// main() with its terminal ErrorMessage handler already registered), and
+// prints the galaxy + character list. Returns std::nullopt if the server
+// rejects the login (ErrorMessage).
+std::optional<LoginResult> performLogin(soe::SoeSession& session, soe::MessageDispatcher& dispatcher,
+                                         bool& failed, const CliOptions& opts) {
+    session.sendMessage(swgproto::buildAccountVersionMessage(opts.username, opts.password));
+    std::cout << "Sent AccountVersionMessage for \"" << opts.username << "\"\n";
+
+    LoginResult result;
+    bool gotClientToken = false;
+    bool gotEnumCluster = false;
+    bool gotClusterStatus = false;
+    bool gotCharacterList = false;
+
+    dispatcher.on(swgproto::kLoginClientTokenHash, [&](soe::PacketBuffer& buf) {
+        result.clientToken = swgproto::LoginClientToken::parse(buf);
+        std::cout << "LoginClientToken: accountId=" << result.clientToken.accountId
+                   << " stationId=" << result.clientToken.stationId << " username=\""
+                   << result.clientToken.username << "\"\n";
+        gotClientToken = true;
+    });
+    dispatcher.on(swgproto::kLoginEnumClusterHash, [&](soe::PacketBuffer& buf) {
+        result.galaxies = swgproto::LoginEnumCluster::parse(buf);
+        gotEnumCluster = true;
+    });
+    dispatcher.on(swgproto::kLoginClusterStatusHash, [&](soe::PacketBuffer& buf) {
+        result.galaxyStatus = swgproto::LoginClusterStatus::parse(buf);
+        gotClusterStatus = true;
+    });
+    dispatcher.on(swgproto::kEnumerateCharacterIdHash, [&](soe::PacketBuffer& buf) {
+        result.characters = swgproto::EnumerateCharacterId::parse(buf);
+        gotCharacterList = true;
+    });
+
+    pumpUntil(session, dispatcher, failed, [&] {
+        return gotClientToken && gotEnumCluster && gotClusterStatus && gotCharacterList;
+    });
+
+    dispatcher.off(swgproto::kLoginClientTokenHash);
+    dispatcher.off(swgproto::kLoginEnumClusterHash);
+    dispatcher.off(swgproto::kLoginClusterStatusHash);
+    dispatcher.off(swgproto::kEnumerateCharacterIdHash);
+
+    if (failed) {
+        return std::nullopt;
+    }
+
+    std::cout << "\nGalaxies:\n";
+    for (auto& g : result.galaxies.galaxies) {
+        std::cout << "  [" << g.galaxyId << "] " << g.name;
+        for (auto& s : result.galaxyStatus.galaxies) {
+            if (s.galaxyId == g.galaxyId) {
+                std::cout << " - " << s.address << ":" << s.zonePort << " (ping " << s.pingPort
+                           << "), pop=" << s.population << ", status=" << s.status;
+            }
+        }
+        std::cout << "\n";
+    }
+
+    std::cout << "\nCharacters:\n";
+    for (auto& c : result.characters.characters) {
+        std::cout << "  \"" << toUtf8Preview(c.name) << "\" (objectId=" << c.objectId
+                   << ", galaxyId=" << c.galaxyId << ", type=" << c.characterType << ")\n";
+    }
+
+    return result;
+}
+
+// ---- Galaxy/character selection -----------------------------------------
+
+struct TargetSelection {
+    uint32_t galaxyId = 0;
+    uint64_t existingCharacterId = 0; // 0 when creating a new character
+    std::u16string existingCharacterName; // empty when creating a new character
+};
+
+// Decides which galaxy (and, for an existing character, which character) to
+// zone into, based on --galaxy-id/--character-name overrides and the login
+// response. Returns std::nullopt if there's nothing valid to select (e.g.
+// an empty character list when not creating a new one).
+std::optional<TargetSelection> selectGalaxyAndCharacter(const CliOptions& opts,
+                                                          const LoginResult& login) {
+    if (opts.createCharacter) {
+        TargetSelection target;
+        target.galaxyId = (opts.galaxyId >= 0) ? static_cast<uint32_t>(opts.galaxyId)
+                                                 : login.galaxies.galaxies.front().galaxyId;
+        return target;
+    }
+
+    if (login.characters.characters.empty()) {
+        std::cerr << "No characters on this account - cannot proceed to zone connect.\n";
+        return std::nullopt;
+    }
+
+    const swgproto::CharacterEntry* chosen=nullptr;
+    for(const auto& character:login.characters.characters)
+        if(opts.galaxyId<0||character.galaxyId==uint32_t(opts.galaxyId)){chosen=&character;break;}
+    if (!opts.characterName.empty()) {
+        chosen=nullptr;
+        for (auto& c : login.characters.characters) {
+            if (toUtf8Preview(c.name) == opts.characterName && (opts.galaxyId<0 || c.galaxyId==uint32_t(opts.galaxyId))) {
+                if(chosen)throw std::runtime_error("Character name is ambiguous; select a galaxy ID");
+                chosen = &c;
+            }
+        }
+    }
+
+    if(!chosen)throw std::runtime_error("Requested character was not found on this account/galaxy");
+    if(opts.galaxyId>=0&&chosen->galaxyId!=uint32_t(opts.galaxyId))
+        throw std::runtime_error("Selected character is not on requested galaxy");
+    std::cout << "\nSelecting character \"" << toUtf8Preview(chosen->name)
+               << "\" (objectId=" << chosen->objectId << ") on galaxy " << chosen->galaxyId
+               << "\n";
+
+    TargetSelection target;
+    target.galaxyId = chosen->galaxyId;
+    target.existingCharacterId = chosen->objectId;
+    target.existingCharacterName = chosen->name;
+    return target;
+}
+
+// Looks up the zone server address/port for `galaxyId` in a
+// LoginClusterStatus response. Returns nullptr if the galaxy isn't present.
+const swgproto::GalaxyStatus* findZoneInfo(const swgproto::LoginClusterStatus& galaxyStatus,
+                                            uint32_t galaxyId) {
     for (auto& s : galaxyStatus.galaxies) {
         if (s.galaxyId == galaxyId) {
             return &s;
