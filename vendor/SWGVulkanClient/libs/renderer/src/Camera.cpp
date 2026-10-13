@@ -1,0 +1,150 @@
+#include "renderer/Camera.h"
+
+#include <algorithm>
+
+
+#include "renderer/Window.h"
+
+using namespace DirectX;
+
+namespace renderer {
+
+namespace {
+constexpr float kPitchLimit = XM_PIDIV2 - 0.01f; // just short of straight up/down
+}
+
+void FlyCamera::update(Window& window, float deltaSeconds) {
+    int dx=0,dy=0;window.takeMouseDragDelta(1,dx,dy);
+    yaw += static_cast<float>(dx) * mouseSensitivity;
+    pitch = std::clamp(pitch-static_cast<float>(dy)*mouseSensitivity,-kPitchLimit,kPitchLimit);
+    window.takeMouseDelta(dx,dy); // drain movement used by legacy picking callers
+
+    XMFLOAT3 fwd = forward();
+    XMVECTOR forwardVec = XMLoadFloat3(&fwd);
+    XMVECTOR worldUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    XMVECTOR rightVec = XMVector3Normalize(XMVector3Cross(worldUp, forwardVec));
+
+    XMVECTOR posVec = XMLoadFloat3(&position);
+    float distance = moveSpeed * deltaSeconds;
+    auto keyDown = [&](int key) {
+        const bool tap = window.takeKeyPress(key);
+        return Window::isKeyDown(key) || tap;
+    };
+
+    if (keyDown('W')) posVec = XMVectorAdd(posVec, XMVectorScale(forwardVec, distance));
+    if (keyDown('S')) posVec = XMVectorSubtract(posVec, XMVectorScale(forwardVec, distance));
+    if (keyDown('A')) posVec = XMVectorSubtract(posVec, XMVectorScale(rightVec, distance));
+    if (keyDown('D')) posVec = XMVectorAdd(posVec, XMVectorScale(rightVec, distance));
+    if (keyDown(Window::Space)) posVec = XMVectorAdd(posVec, XMVectorScale(worldUp, distance));
+    if (keyDown(Window::Control))
+        posVec = XMVectorSubtract(posVec, XMVectorScale(worldUp, distance));
+
+    XMStoreFloat3(&position, posVec);
+}
+
+XMFLOAT3 FlyCamera::forward() const {
+    // Standard yaw/pitch -> direction vector (right-handed, Y-up): yaw
+    // rotates around Y starting from +Z, pitch tilts up/down afterward.
+    float cosPitch = cosf(pitch);
+    XMFLOAT3 dir{sinf(yaw) * cosPitch, sinf(pitch), cosf(yaw) * cosPitch};
+    return dir;
+}
+
+XMMATRIX FlyCamera::viewMatrix() const {
+    XMVECTOR posVec = XMLoadFloat3(&position);
+    XMFLOAT3 fwd = forward();
+    XMVECTOR forwardVec = XMLoadFloat3(&fwd);
+    XMVECTOR targetVec = XMVectorAdd(posVec, forwardVec);
+    XMVECTOR upVec = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    return XMMatrixLookAtLH(posVec, targetVec, upVec);
+}
+
+void FollowCamera::update(Window& window, const XMFLOAT3& targetPosition, float deltaSeconds) {
+    (void)deltaSeconds; // no smoothing/lag on this first pass
+
+    int dx=0,dy=0;window.takeMouseDragDelta(1,dx,dy);
+    yaw += static_cast<float>(dx) * mouseSensitivity;
+    pitch = std::clamp(pitch-static_cast<float>(dy)*mouseSensitivity,-kPitchLimit,kPitchLimit);
+    window.takeMouseDelta(dx,dy);
+
+    int wheel = window.takeMouseWheelDelta();
+    if (wheel != 0) {
+        distance -= (static_cast<float>(wheel) / 120) * zoomPerWheelNotch;
+        distance = std::clamp(distance, minDistance, maxDistance);
+    }
+
+    XMFLOAT3 dir = lookDirection();
+    XMVECTOR dirVec = XMLoadFloat3(&dir);
+    XMVECTOR targetVec =
+        XMVectorSet(targetPosition.x, targetPosition.y + targetHeightOffset, targetPosition.z, 0.0f);
+    XMVECTOR posVec = XMVectorSubtract(targetVec, XMVectorScale(dirVec, distance));
+    XMStoreFloat3(&position, posVec);
+}
+
+XMFLOAT3 FollowCamera::lookDirection() const {
+    // Same yaw/pitch -> direction convention as FlyCamera::forward().
+    float cosPitch = cosf(pitch);
+    return XMFLOAT3{sinf(yaw) * cosPitch, sinf(pitch), cosf(yaw) * cosPitch};
+}
+
+XMMATRIX FollowCamera::viewMatrix(const XMFLOAT3& targetPosition) const {
+    XMVECTOR eyeVec = XMLoadFloat3(&position);
+    XMVECTOR targetVec =
+        XMVectorSet(targetPosition.x, targetPosition.y + targetHeightOffset, targetPosition.z, 0.0f);
+    XMVECTOR upVec = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    return XMMatrixLookAtLH(eyeVec, targetVec, upVec);
+}
+
+namespace {
+// Normalizes a plane's (a,b,c,d) so (a,b,c) is unit length - needed for
+// intersectsSphere()'s distance test to be in real world units.
+XMFLOAT4 normalizePlane(XMFLOAT4 p) {
+    float lengthSq = p.x * p.x + p.y * p.y + p.z * p.z;
+    if (lengthSq > 1e-12f) {
+        float invLength = 1.0f / sqrtf(lengthSq);
+        p.x *= invLength;
+        p.y *= invLength;
+        p.z *= invLength;
+        p.w *= invLength;
+    }
+    return p;
+}
+} // namespace
+
+Frustum Frustum::fromViewProjection(XMMATRIX viewProj) {
+    XMFLOAT4X4 m;
+    XMStoreFloat4x4(&m, viewProj);
+
+    // Gribb/Hartmann extraction for DirectXMath's row-vector convention
+    // (clip = v * M, v a row vector): clip.x/.y/.z/.w are each a dot
+    // product of v with a COLUMN of M (column j = (_1j, _2j, _3j, _4j) in
+    // this row-major _mn indexing), NOT a row - the frustum planes are
+    // therefore linear combinations of M's columns. D3D's [0,1] depth
+    // range is why the near plane is column2 alone, not column3+column2
+    // (the OpenGL [-1,1]-depth version of this algorithm).
+    Frustum f;
+    f.planes[0] = normalizePlane({m._11 + m._14, m._21 + m._24, m._31 + m._34,
+                                   m._41 + m._44}); // left
+    f.planes[1] = normalizePlane({m._14 - m._11, m._24 - m._21, m._34 - m._31,
+                                   m._44 - m._41}); // right
+    f.planes[2] = normalizePlane({m._12 + m._14, m._22 + m._24, m._32 + m._34,
+                                   m._42 + m._44}); // bottom
+    f.planes[3] = normalizePlane({m._14 - m._12, m._24 - m._22, m._34 - m._32,
+                                   m._44 - m._42}); // top
+    f.planes[4] = normalizePlane({m._13, m._23, m._33, m._43});           // near
+    f.planes[5] = normalizePlane({m._14 - m._13, m._24 - m._23, m._34 - m._33,
+                                   m._44 - m._43}); // far
+    return f;
+}
+
+bool Frustum::intersectsSphere(XMFLOAT3 center, float radius) const {
+    for (const XMFLOAT4& p : planes) {
+        float distance = p.x * center.x + p.y * center.y + p.z * center.z + p.w;
+        if (distance < -radius) {
+            return false; // fully outside this one plane -> outside the frustum
+        }
+    }
+    return true;
+}
+
+} // namespace renderer

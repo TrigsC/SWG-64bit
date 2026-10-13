@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.21)
+project(SWGOfflineViewer LANGUAGES CXX)
+set(SWG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+add_subdirectory(../vendor/SWGVulkanClient swg)
+add_executable(asset-exporter src/exporter.cpp)
+target_compile_features(asset-exporter PRIVATE cxx_std_20)
+target_link_libraries(asset-exporter PRIVATE assets::assets terrain::terrain)

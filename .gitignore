@@ -1,0 +1,26 @@
+/build/
+/downloads/
+/tools/
+*.app/
+*.local.md
+*.local.json
+*.log
+__pycache__/
+.DS_Store
+.venv/
+/viewer/cache/
+/tre_export/
+*.tre
+*.exe
+*.dll
+*.dmp
+*.mdmp
+*.pcap
+*.pcapng
+*.jsonl
+# Derived from each contributor's owned game files or original-client sessions.
+*.tsv
+*.hex
+*fixtures.h
+/animation-audit/
+/vendor/SWGVulkanClient/libs/assets/data/*.txt

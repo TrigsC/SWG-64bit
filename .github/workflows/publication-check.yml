@@ -1,0 +1,21 @@
+name: Publication check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  source-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Check tracked files and source-only fixture generators
+        run: |
+          python3 scripts/publication_audit.py --summary
+          python3 -m unittest discover -s scripts/tests -p 'test_*.py'

@@ -1,0 +1,25 @@
+name: Bounded client feature
+description: One testable client behavior slice
+title: "[feature] "
+body:
+  - type: textarea
+    id: trigger
+    attributes:
+      label: Trigger and expected behavior
+      description: State a concrete input and before/after behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Existing evidence
+      description: Point to source, fixture, issue or original-client observation; do not attach private captures.
+  - type: textarea
+    id: tests
+    attributes:
+      label: Required tests
+      description: Include an asset-free test and any optional owned-asset or controlled-server check.
+  - type: textarea
+    id: limits
+    attributes:
+      label: Out of scope
