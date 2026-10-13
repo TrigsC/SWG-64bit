@@ -28,8 +28,10 @@ Before pushing, run `python3 scripts/publication_audit.py --summary` and
 source checks run on PRs. They block known asset/capture file types and
 obvious embedded records; research-note matches are advisory and need human
 review. GitHub checks run after a push, so inspect your staged files first:
-`git diff --cached --name-only`. Keep locally generated material in ignored
-`tools/local-assets/`.
+`git diff --cached --name-only`. GitHub Actions also builds and runs the
+asset-free Apple Silicon source suite and compiles the Windows x64 client core.
+The Windows check does not validate a renderer or launcher. Keep locally
+generated material in ignored `tools/local-assets/`.
 
 `login.swgemu.com` is not a substitute for a controlled integration server:
 the public service can change and may restrict unofficial clients. Use local

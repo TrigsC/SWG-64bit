@@ -23,7 +23,7 @@ def run(*args: object) -> None:
     subprocess.run([str(x) for x in args], check=True)
 
 
-def check() -> None:
+def check(require_assets: bool = True) -> None:
     if platform.system() != "Darwin" or platform.machine() != "arm64":
         raise SystemExit("The native launcher currently requires macOS on Apple Silicon; Windows x64 has not been ported.")
     major = int(platform.mac_ver()[0].split(".")[0] or 0)
@@ -34,11 +34,14 @@ def check() -> None:
             raise SystemExit(f"Missing {command}. Install Xcode Command Line Tools, then retry.")
     for tool in ("swiftc", "clang++"):
         run("xcrun", "--find", tool)
-    if not (GAME / "SWGEmu.exe").is_file() or not list(GAME.glob("*.tre")):
+    if require_assets and (not (GAME / "SWGEmu.exe").is_file() or not list(GAME.glob("*.tre"))):
         raise SystemExit("Clone this repository as 'modernization' inside your owned SWGEmu folder containing SWGEmu.exe and .tre archives.")
     if ROOT.name != "modernization":
         raise SystemExit("The current runtime expects this repository to be named 'modernization' inside the game folder.")
-    print(f"Prerequisites passed; game assets stay in {GAME}.")
+    if require_assets:
+        print(f"Prerequisites passed; game assets stay in {GAME}.")
+    else:
+        print("CI prerequisites passed; no game assets required.")
 
 
 def digest(path: Path) -> str:
@@ -116,13 +119,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="inspect prerequisites without installing")
     parser.add_argument("--assets", action="store_true", help="also run owned-asset tests")
+    parser.add_argument("--ci", action="store_true", help="build and run source tests without game assets")
     args = parser.parse_args()
-    check()
+    if args.ci and args.assets:
+        parser.error("--ci and --assets cannot be combined")
+    check(require_assets=not args.ci)
     if args.check:
         return
     cmake, ninja = install_build_tools()
     install_archives()
-    run(sys.executable, ROOT / "scripts/generate_local_indexes.py")
+    if not args.ci:
+        run(sys.executable, ROOT / "scripts/generate_local_indexes.py")
     build_dependencies(cmake, ninja)
     run(ROOT / "live-client/build-client.sh")
     # The app packaging step builds only dummyclient; CTest also needs the

@@ -1,12 +1,17 @@
-name: Publication check
+name: Source and build checks
 
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   source-safety:
@@ -19,3 +24,31 @@ jobs:
         run: |
           python3 scripts/publication_audit.py --summary
           python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+
+  macos-arm64:
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: modernization
+          persist-credentials: false
+      - name: Build and test without game assets
+        run: |
+          test "$(uname -m)" = arm64
+          python3 modernization/scripts/setup.py --ci
+
+  windows-core-x64:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: modernization
+          persist-credentials: false
+      - name: Configure source-only x64 client core
+        working-directory: modernization/vendor/SWGVulkanClient
+        run: cmake --preset windows-vs2022 -DSWG_BUILD_RENDERER=OFF -DSWG_BUILD_TESTS=OFF
+      - name: Compile source-only x64 client core
+        working-directory: modernization/vendor/SWGVulkanClient
+        run: cmake --build --preset windows-vs2022 --target dummyclient --parallel 4

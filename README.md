@@ -49,6 +49,13 @@ byte-for-byte.
 Run `python3 modernization/scripts/setup.py --check` to inspect prerequisites
 without installing anything.
 
+GitHub Actions runs an asset-free Apple Silicon build and source tests with
+`python3 modernization/scripts/setup.py --ci`. This mode is for CI: it skips
+the local game-file check and asset index, and does not make the resulting app
+playable without the contributor's own installation. Actions also compiles the
+Windows x64 protocol/client core without a renderer; this is not a Windows
+launcher or a verified Windows graphics build.
+
 Once set up, say **“work on it”**. Codex should read the selected GitHub issue,
 check for an active claim or PR, implement one scoped change, run the focused
 tests plus the source-only suite, and open a draft PR with evidence and limits.
