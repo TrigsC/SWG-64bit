@@ -4,10 +4,18 @@
    perform these commands for you.
 2. Ask Codex for a few `available` issues. Look at the issue comments and PRs;
    a claimed issue is busy. Say “work on it” to begin the recommended one.
-3. Codex creates a branch, makes one focused change, runs tests, and opens a
-   **draft PR**. A PR is a review proposal; it does not change the main branch.
-4. Review the PR's behavior and test evidence. A maintainer decides when it is
-   complete and ready to merge.
+3. Codex makes one focused change and runs tests. If you do not have write
+   access to this repository, Codex creates or reuses a fork in your GitHub
+   account, pushes an issue branch there, and opens a **draft PR targeting
+   `TrigsC/SWG-64bit:main`**. The PR appears in this repository; you do not
+   need to run Git commands or request write access. Contributors who already
+   have write access use an issue branch here, never `main`.
+4. Review the PR's behavior and test evidence. Only the repository owner
+   decides when it is complete and merges it. A PR does not change `main`.
+
+If Codex cannot access your GitHub account or create a fork, it should keep
+the tested work local, tell you the one-time connection or fork step needed,
+then finish the push and draft PR after access is available.
 
 Issue labels: `available`, `claimed`, `needs-mac`, `needs-windows-reference`,
 `needs-assets`, `research`, `good-first-issue`. A brief “I am working on this”

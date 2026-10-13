@@ -59,6 +59,10 @@ launcher or a verified Windows graphics build.
 Once set up, say **“work on it”**. Codex should read the selected GitHub issue,
 check for an active claim or PR, implement one scoped change, run the focused
 tests plus the source-only suite, and open a draft PR with evidence and limits.
+For contributors without upstream write access, Codex should create or reuse
+a fork in their GitHub account, push the issue branch there, and target this
+repository's `main` branch with the draft PR. No upstream access or manual Git
+commands are required. The repository owner reviews and merges accepted PRs.
 Codex can propose issues without logging into a server. See [CONTRIBUTING.md](CONTRIBUTING.md).
 `python3 modernization/scripts/work_queue.py` lists unclaimed public issues;
 Codex should also inspect comments and open PRs before taking one.

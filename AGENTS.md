@@ -13,6 +13,17 @@ Show 2–3 relevant choices and a recommendation. If the user says “work on it
 without selecting one, take the recommended issue. Mark it as claimed with a
 brief issue comment if GitHub access allows, and link the issue in the draft PR.
 
+When publishing a contribution, check the contributor's GitHub access to
+`TrigsC/SWG-64bit`. Public contributors normally have no write access: create
+or reuse a fork in their own account, create an issue branch, push that branch
+to the fork, and open a draft PR targeting `TrigsC/SWG-64bit:main`. Keep the
+upstream remote for fetching and use a separate fork remote for pushing. If the
+contributor has write access, use an issue branch in the upstream repository;
+never push directly to `main`. Handle the fork, Git remotes, push, and PR for
+the contributor. Do not ask for upstream write access. If GitHub access or fork
+creation is unavailable, retain the tested local branch, explain the one-time
+account connection or fork step needed, and resume publication afterward.
+
 Use the original SWGEmu/Pre-CU client and REA only for narrow, read-only behavior
 research when a concrete question requires them. Use original assets from the
 local installation for offline tests. Do not execute unsolicited admin commands,
