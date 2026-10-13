@@ -2,8 +2,15 @@
 
 1. Clone and run the one-command setup from [README.md](README.md). Codex can
    perform these commands for you.
-2. Ask Codex for a few `available` issues. Look at the issue comments and PRs;
-   a claimed issue is busy. Say “work on it” to begin the recommended one.
+2. Ask Codex for a few `available` issues, or run
+   `python3 scripts/work_queue.py --platform mac --limit 3` from the repository.
+   Use `--platform windows` on a Windows machine or `--platform research` for
+   source-only research. The default is `mac`; `--platform all` shows every
+   unblocked platform. The queue prints platform, needs, and dependencies,
+   and skips assigned issues, active comment claims, and issues referenced by
+   open PRs. A comment claim expires after 14 days unless renewed; labels and
+   assignments still need to be cleared by their owners. Check the issue and
+   open PRs before starting. Say “work on it” to begin the recommended one.
 3. Codex makes one focused change and runs tests. If you do not have write
    access to this repository, Codex creates or reuses a fork in your GitHub
    account, pushes an issue branch there, and opens a **draft PR targeting
@@ -16,6 +23,10 @@
 If Codex cannot access your GitHub account or create a fork, it should keep
 the tested work local, tell you the one-time connection or fork step needed,
 then finish the push and draft PR after access is available.
+
+If GitHub is unavailable, the queue points to [WORK_QUEUE.md](WORK_QUEUE.md).
+That offline list cannot show live claims, assignments, or PRs, so check them
+when GitHub returns before publishing work.
 
 Issue labels: `available`, `claimed`, `needs-mac`, `needs-windows-reference`,
 `needs-assets`, `research`, `good-first-issue`. A brief “I am working on this”
