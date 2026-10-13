@@ -14,11 +14,13 @@ public:
     using ObjectName=std::function<std::optional<std::u16string>(uint64_t)>;
     struct ObjectInfo {std::optional<std::u16string> name;bool creature=false;std::optional<int32_t> gender;std::optional<std::string> templatePath;std::string alternateAppearance;};
     using ObjectContext=std::function<std::optional<ObjectInfo>(uint64_t)>;
+    struct Presentation {std::u16string text;bool resolved=false;};
     explicit LocalizedChat(HudAssetReader reader):reader_(std::move(reader)),gender_(reader_){}
     std::optional<std::u16string> format(const swgproto::StringIdChatParameter&,const ObjectName&);
     std::optional<std::u16string> formatRetained(uint64_t sequence,const swgproto::StringIdChatParameter&,const ObjectName&);
     std::optional<std::u16string> formatWithContext(const swgproto::StringIdChatParameter&,const ObjectContext&);
     std::optional<std::u16string> formatRetainedWithContext(uint64_t sequence,const swgproto::StringIdChatParameter&,const ObjectContext&);
+    Presentation presentRetainedWithContext(uint64_t sequence,const swgproto::StringIdChatParameter&,const ObjectContext&);
     std::optional<std::u16string> resolveName(const swgproto::StringId& id){return lookup(id);}
     void retainSequences(std::span<const uint64_t>);
     size_t resolvedLines() const{return resolved_.size();}

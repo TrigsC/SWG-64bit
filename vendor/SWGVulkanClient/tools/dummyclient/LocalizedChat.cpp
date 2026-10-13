@@ -1,5 +1,7 @@
 #include "LocalizedChat.h"
 #include <bit>
+#include <charconv>
+#include <cmath>
 #include <exception>
 #include <set>
 #include <algorithm>
@@ -8,6 +10,12 @@ namespace dummyclient {
 namespace {
 constexpr size_t maxTables=16,maxTableBytes=2*1024*1024,maxCacheBytes=8*1024*1024,maxOutput=8192;
 std::u16string unicode(const std::string& text){return {text.begin(),text.end()};}
+std::optional<std::u16string> finiteFloat(float value){
+    if(!std::isfinite(value))return {};
+    char buffer[64];auto [end,error]=std::to_chars(buffer,buffer+sizeof(buffer),value,std::chars_format::general);
+    if(error!=std::errc{})return {};
+    return unicode({buffer,end});
+}
 }
 void LocalizedChat::retainSequences(std::span<const uint64_t> sequences){
     std::set<uint64_t> active(sequences.begin(),sequences.end());std::erase_if(resolved_,[&](const auto& row){return !active.contains(row.first);});
@@ -18,6 +26,10 @@ std::optional<std::u16string> LocalizedChat::formatRetained(uint64_t sequence,co
 std::optional<std::u16string> LocalizedChat::formatRetainedWithContext(uint64_t sequence,const swgproto::StringIdChatParameter& p,const ObjectContext& context){
     if(auto found=resolved_.find(sequence);found!=resolved_.end())return found->second;
     auto text=formatWithContext(p,context);if(text){if(resolved_.size()==1280)resolved_.erase(resolved_.begin());resolved_.emplace(sequence,*text);}return text;
+}
+LocalizedChat::Presentation LocalizedChat::presentRetainedWithContext(uint64_t sequence,const swgproto::StringIdChatParameter& p,const ObjectContext& context){
+    if(auto text=formatRetainedWithContext(sequence,p,context))return {*text,true};
+    return {u"A localized message is unavailable.",false};
 }
 std::optional<std::u16string> LocalizedChat::lookup(const swgproto::StringId& id){
     if(!swgproto::isValidStringIdReference(id))return {};
@@ -66,6 +78,7 @@ std::optional<std::u16string> LocalizedChat::formatWithContext(const swgproto::S
         if((*input)[at]!=u'%'||input->size()-at<3){if(output.size()==maxOutput)return {};output+=(*input)[at++];continue;}
         auto code=input->substr(at+1,2);std::optional<std::u16string> value;
         if(code==u"DI")value=unicode(std::to_string(std::bit_cast<int32_t>(p.di)));
+        else if(code==u"DF")value=finiteFloat(p.df);
         else {
             const auto* participant=code[1]==u'U'?&p.tu:code[1]==u'T'?&p.tt:code[1]==u'O'?&p.to:nullptr;
             if(!participant)return {};
@@ -94,7 +107,7 @@ std::optional<std::u16string> LocalizedChat::formatWithContext(const swgproto::S
                     auto end=pronouns->find(u'\n',start);value=pronouns->substr(start,end==pronouns->npos?pronouns->size()-start:end-start);
                     if(!value->empty()&&value->back()==u'\r')value->pop_back();
                 }
-            }else return {}; // Perspective/DF/species/title and absent modern tokens remain deferred.
+            }else return {}; // Perspective/species/title and absent modern tokens remain deferred.
         }
         if(!value||value->size()>maxOutput-output.size())return {};
         output+=*value;at+=3; // Original fixed-three-character scan, never rescan substituted data.
