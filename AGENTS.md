@@ -8,7 +8,10 @@ matrices, or derived asset indexes. Do not put local
 absolute paths, server addresses, character names or secrets in a PR.
 
 Before work: read README.md, CONTRIBUTING.md, and WORK_QUEUE.md; inspect open
-GitHub issues and PRs. Prefer a small `available` issue without a current claim.
+GitHub issues and PRs. Run `python3 scripts/work_queue.py --platform mac --limit 3`
+on a Mac (or choose `windows` / `research` as appropriate) to shortlist issues;
+the live issue and PR pages remain the final check. Prefer a small `available`
+issue without a current claim.
 Show 2–3 relevant choices and a recommendation. If the user says “work on it”
 without selecting one, take the recommended issue. Mark it as claimed with a
 brief issue comment if GitHub access allows, and link the issue in the draft PR.
