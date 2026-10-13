@@ -56,3 +56,10 @@ generated material in ignored `tools/local-assets/`.
 the public service can change and may restrict unofficial clients. Use local
 fixture/replay tests for PR checks. A public login requires current operator
 permission and a user-initiated manual check; never use CI credentials.
+
+For a PR that changes live behavior, use the short
+[controlled-server smoke check](SMOKE_TEST.md). Run the source-only rows first;
+run server or optional Windows rows only when you have the required private
+test environment. The PR template accepts Pass, Fail, or Not run for every row
+and asks for aggregate results only. A missing server is a valid Not run, not
+evidence of a pass.

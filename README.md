@@ -93,6 +93,8 @@ bounded set of UI, font, localization and object-template inputs into ignored
 `modernization/tools/local-assets/tre_export/`; no extracted files are committed
 or uploaded. `--loopback` includes two localhost
 UDP tests that may need Codex sandbox permission. `--list` shows the source test set.
+For PRs affecting live behavior, [SMOKE_TEST.md](SMOKE_TEST.md) separates these
+offline checks from optional controlled-server and original-Windows checks.
 The current client still has incomplete gameplay, UI, audio, networking and
 platform parity; see [WORK_QUEUE.md](WORK_QUEUE.md) for areas to contribute.
 
