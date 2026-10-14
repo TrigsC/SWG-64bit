@@ -27,8 +27,12 @@ the contributor. Do not ask for upstream write access. If GitHub access or fork
 creation is unavailable, retain the tested local branch, explain the one-time
 account connection or fork step needed, and resume publication afterward.
 
-Use the original SWGEmu/Pre-CU client and REA only for narrow, read-only behavior
-research when a concrete question requires them. Use original assets from the
+Before new binary research, check the linked Stardust research record using the
+version and evidence rules in [RESEARCH.md](RESEARCH.md). Reuse its documented
+findings as leads; corroborate build-specific claims against the contributor's
+own client before treating them as SWGEmu behavior. Use the original
+SWGEmu/Pre-CU client and REA only for narrow, read-only behavior research when
+a concrete question remains. Use original assets from the
 local installation for offline tests. Do not execute unsolicited admin commands,
 automated gameplay or bulk traffic on public servers. No production-server
 login is part of CI. The app remains Mac ARM64 only until Windows x64 has an
