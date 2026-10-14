@@ -1,0 +1,15 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {"major": 3, "minor": 25, "patch": 0},
+  "configurePresets": [{
+    "name": "windows-x64",
+    "generator": "Visual Studio 17 2022",
+    "architecture": "x64",
+    "toolset": "v143",
+    "binaryDir": "${sourceDir}/../build/windows-x64",
+    "cacheVariables": {"SWG_BUILD_RENDERER": "ON", "SWG_BUILD_TESTS": "ON"}
+  }],
+  "buildPresets": [{"name": "windows-x64", "configurePreset": "windows-x64", "configuration": "Debug"}],
+  "testPresets": [{"name": "windows-x64", "configurePreset": "windows-x64", "configuration": "Debug",
+    "output": {"outputOnFailure": true}, "execution": {"noTestsAction": "error"}}]
+}

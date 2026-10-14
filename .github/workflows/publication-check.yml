@@ -46,9 +46,35 @@ jobs:
         with:
           path: modernization
           persist-credentials: false
-      - name: Configure source-only x64 client core
-        working-directory: modernization/vendor/SWGVulkanClient
-        run: cmake --preset windows-vs2022 -DSWG_BUILD_RENDERER=OFF -DSWG_BUILD_TESTS=OFF
-      - name: Compile source-only x64 client core
-        working-directory: modernization/vendor/SWGVulkanClient
-        run: cmake --build --preset windows-vs2022 --target dummyclient --parallel 4
+      - name: Build and test source-only x64 client core
+        working-directory: modernization
+        run: python scripts/setup_windows.py --core
+
+  windows-renderer-x64:
+    needs: windows-core-x64
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: modernization
+          persist-credentials: false
+      - name: Install pinned x64 Vulkan SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '1.4.321.1'
+          $installer = Join-Path $env:RUNNER_TEMP 'vulkan-sdk.exe'
+          Invoke-WebRequest "https://sdk.lunarg.com/sdk/download/$version/windows/vulkansdk-windows-X64-$version.exe" -OutFile $installer
+          $expected = 'baaa4f7ca11ed3d82aa1c102b21208915485bbaa473068c763daa425cca468bd'
+          if ((Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) {
+            throw 'Vulkan SDK checksum mismatch'
+          }
+          $sdk = Join-Path $env:RUNNER_TEMP 'VulkanSDK'
+          $process = Start-Process -FilePath $installer -WindowStyle Hidden -Wait -PassThru -ArgumentList @('--root', $sdk, '--accept-licenses', '--default-answer', '--confirm-command', 'install')
+          if ($process.ExitCode -ne 0) { throw "Vulkan SDK installer failed: $($process.ExitCode)" }
+          "VULKAN_SDK=$sdk" >> $env:GITHUB_ENV
+          "$sdk\Bin" >> $env:GITHUB_PATH
+      - name: Build client and renderer; run source and Win32 window smoke tests
+        working-directory: modernization
+        run: python scripts/setup_windows.py

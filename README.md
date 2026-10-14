@@ -12,6 +12,10 @@ test target, not an available launcher option. No original game binaries,
 `.tre` archives, extracted assets, credentials, or private server data are in
 this repository.
 
+For the separate, in-progress Windows x64 build and asset-free smoke path
+(Issue #7), see [windows/README.md](windows/README.md). This development path
+does not make the Mac launcher available on Windows.
+
 ## One prompt for a contributor
 
 Open a Codex project in a **locally owned SWGEmu Pre-CU installation folder**
