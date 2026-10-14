@@ -3,8 +3,10 @@
 This is a separate Windows development build, not the Mac app or a completed
 game launcher. Issue #25 covers validation of this foundation; launcher UI
 remains Issue #26. An actual Windows x64 build/test result is required before
-advertising Windows support. The initial implementation has not yet been
-validated on a Windows x64 runner.
+advertising Windows support. The [initial native x64 CI run](https://github.com/TrigsC/SWG-64bit/actions/runs/38650998829)
+compiled the core and full client/renderer, passed five core/startup tests and
+six renderer-build/window tests, and passed the Mac regression suite. Vulkan
+frame presentation remains unverified; use the explicit render probe below.
 
 ## Prerequisites and inventory
 
