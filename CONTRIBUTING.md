@@ -42,6 +42,11 @@ decompiled source from SWG.exe or Core3. Preserve the upstream non-commercial
 license. Mac reviewers should use their own asset files and account if a manual
 connection is relevant and permitted by their server.
 
+For research-heavy issues, follow [RESEARCH.md](RESEARCH.md): check the public
+Stardust research index before repeating executable analysis, cite the specific
+finding, and verify build-dependent claims against your own client. A linked
+research finding is a lead, not a substitute for a local regression test.
+
 Before pushing, run `python3 scripts/publication_audit.py --summary` and
 `python3 -m unittest discover -s scripts/tests -p 'test_*.py'`. The same
 source checks run on PRs. They block known asset/capture file types and

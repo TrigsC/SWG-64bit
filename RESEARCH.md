@@ -5,9 +5,44 @@ it does not vendor the original executable, third-party server source, REA,
 Ghidra, or decompiler databases. The contributor's own SWG installation is
 the reference artifact. REA is an optional tool for a scoped issue.
 
+## Check existing research first
+
+[Stardust Client Research](https://github.com/Levarrishawk/Stardust-Client-Research)
+is a public, research-only record for another SWG client executable. Start at
+its [research index](https://github.com/Levarrishawk/Stardust-Client-Research/blob/main/START_HERE.md)
+and read the narrow contract and evidence checkpoint for the feature at hand.
+Its reported coverage is a weighted estimate of observable behavior, **not** a
+complete decompilation or a count of recovered functions. Its implementation
+lives in a separate project.
+
+Useful entry points include the
+[packet-handler map](https://github.com/Levarrishawk/Stardust-Client-Research/blob/main/docs/PACKET_HANDLER_MAP.md),
+[localized prose and grammar investigation](https://github.com/Levarrishawk/Stardust-Client-Research/blob/main/research/checkpoints/ANALYSIS_CHECKPOINT_2026-09-21_STRING_VARIABLES_AND_GRAMMAR.md),
+[asset pipeline](https://github.com/Levarrishawk/Stardust-Client-Research/blob/main/docs/ASSET_PIPELINE.md),
+[terrain architecture](https://github.com/Levarrishawk/Stardust-Client-Research/blob/main/docs/WORLD_TERRAIN_ARCHITECTURE.md), and
+[skeleton pose research](https://github.com/Levarrishawk/Stardust-Client-Research/blob/main/docs/SKELETON_ANIMATION_POSE_CONTRACT.md).
+Follow each document's evidence links and stated confidence; a server-source
+correlation alone does not establish original client behavior.
+
+The Stardust findings are pinned to the executable hash in that repository's
+README. A differently named file can have identical bytes, but a hash mismatch
+means its addresses and exact instruction claims cannot be transferred directly.
+Related clients may still share protocols and asset formats. For each adopted
+finding, record the external document link and revision, its evidence level,
+the local client/asset/server revision used to check it, and what remains
+unverified. Prefer a local synthetic or owned-asset regression. Use a narrow
+read-only REA or Windows comparison only when the existing record leaves a
+question open or versions disagree.
+
+Public access to the research does not authorize copying its tools, text,
+decompiled excerpts or third-party implementation code into this repository.
+Link to it, write independent behavior specifications and tests, and check its
+current license and the provenance of any material before considering reuse.
+
 1. Form a narrow question, such as “what opcode and payload width does room
-   delivery use?” Check existing source and tests first.
-2. If binary evidence is needed, run `python3 scripts/setup_rea.py`. This
+   delivery use?” Check existing source, tests and the relevant linked research
+   first. Note which assertions are specific to the researched executable.
+2. If a concrete binary question remains, run `python3 scripts/setup_rea.py`. This
    invokes the pinned [REA project](https://github.com/morluto/rea) setup,
    which shows proposed Codex configuration changes for review. Install a
    supported Ghidra provider following REA's documented guidance; installing
