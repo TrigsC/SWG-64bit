@@ -2,7 +2,12 @@
 set -euo pipefail
 client_dir="$(cd "$(dirname "$0")" && pwd)"
 modern_dir="$(dirname "$client_dir")"
-app_dir="$client_dir/SWG Native Client.app"
+app_dir="${SWG_CLIENT_APP_PATH:-$client_dir/SWG Native Client.app}"
+if [[ "$app_dir" != /* ]]; then
+    echo 'SWG_CLIENT_APP_PATH must be an absolute app path' >&2
+    exit 1
+fi
+export SWG_CLIENT_APP_PATH="$app_dir"
 "$modern_dir/tools/python/bin/cmake" -S "$modern_dir/vulkan" -B "$modern_dir/build/macos-vulkan"
 "$modern_dir/tools/python/bin/cmake" --build "$modern_dir/build/macos-vulkan" --target dummyclient --parallel 4
 world_dir="$app_dir/Contents/Helpers/SWG Native World.app"
