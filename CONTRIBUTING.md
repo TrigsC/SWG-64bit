@@ -1,7 +1,9 @@
 # Contributing without prior Git experience
 
-1. Clone and run the one-command setup from [README.md](README.md). Codex can
-   perform these commands for you.
+1. Clone and choose the host's setup path in [README.md](README.md). Mac uses
+   `scripts/setup.py`; Windows uses `scripts/setup_windows.py` and the separate
+   [Windows guide](windows/README.md). For a small VM or binary testing, prefer
+   the retained Windows CI artifact. Codex can perform these steps for you.
 2. Ask Codex for a few `available` issues, or run
    `python3 scripts/work_queue.py --platform mac --limit 3` from the repository.
    Use `--platform windows` on a Windows machine or `--platform research` for

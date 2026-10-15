@@ -8,8 +8,9 @@ Daybreak, or the upstream maintainer. See [LICENSE.md](LICENSE.md): the upstream
 code permits personal, non-commercial forks and redistribution under its terms.
 
 **Supported now:** macOS 26+, Apple Silicon. Windows x64 has a separate
-development build and launcher; live gameplay and Vulkan presentation remain
-unverified. No original game binaries,
+development build and launcher. Native x64 CI and a three-frame software-Vulkan
+probe on a Windows ARM64 VM have passed; live gameplay remains unverified.
+No original game binaries,
 `.tre` archives, extracted assets, credentials, or private server data are in
 this repository.
 
@@ -17,7 +18,36 @@ For the separate, in-progress Windows x64 build and asset-free smoke path
 (Issues #7 and #26), see [windows/README.md](windows/README.md). This development path
 does not make the Mac launcher available on Windows.
 
-## One prompt for a contributor
+## Windows setup or a ready-to-test binary
+
+Open your owned SWGEmu installation folder in Codex and ask:
+
+> Set up this repository for Windows. Read AGENTS.md and windows/README.md.
+> Inventory this machine first. If I only need a test binary or disk space is
+> limited, obtain the successful Windows CI artifact for the intended commit.
+> Otherwise use setup_windows.py to build Release and package_windows.py to
+> create a test bundle. Generate the local object-template index from my own
+> archives, then check the launcher and synthetic Vulkan probe without logging
+> into a game server. Report which checks passed and their limits.
+
+Windows build commands, run from the repository root:
+
+```powershell
+python scripts/setup_windows.py --check
+python scripts/setup_windows.py --configuration Release
+python scripts/package_windows.py
+```
+
+The result is `build/windows-test-client/SWGLauncher.exe`. To avoid a compiler
+install, open a successful **Source and build checks** run in [GitHub Actions](https://github.com/TrigsC/SWG-64bit/actions),
+download `swg-windows-x64-test-client`, extract the ZIP as a folder, and open
+its `SWGLauncher.exe`. Artifacts are retained for seven days; the committed
+workflow can rebuild them. See [the Windows guide](windows/README.md) for
+prerequisites, integrity checks, local asset indexing and testing limits.
+
+`scripts/setup.py` below is Mac-only; Windows uses `scripts/setup_windows.py`.
+
+## One prompt for a Mac contributor
 
 Open a Codex project in a **locally owned SWGEmu Pre-CU installation folder**
 containing `SWGEmu.exe` and `.tre` files. Prompt Codex:
@@ -74,7 +104,7 @@ Codex can propose issues without logging into a server. See [CONTRIBUTING.md](CO
 `python3 modernization/scripts/work_queue.py` lists unclaimed public issues;
 Codex should also inspect comments and open PRs before taking one.
 
-## Manual setup
+## Manual Mac setup
 
 From the owned game folder:
 

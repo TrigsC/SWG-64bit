@@ -5,8 +5,13 @@ game client. Issue #25 covers validation of this foundation; the development
 launcher below addresses Issue #26. An actual Windows x64 build/test result is required before
 advertising Windows support. The [initial native x64 CI run](https://github.com/TrigsC/SWG-64bit/actions/runs/38650998829)
 compiled the core and full client/renderer, passed five core/startup tests and
-six renderer-build/window tests, and passed the Mac regression suite. Vulkan
-frame presentation remains unverified; use the explicit render probe below.
+six renderer-build/window tests, and passed the Mac regression suite. The
+[Release/package CI run](https://github.com/TrigsC/SWG-64bit/actions/runs/38669586823)
+also passed eight Windows CTest cases, package relocation smoke checks, eleven
+Mac CTest cases and twenty-two Python tests. The downloaded package passed
+launcher startup and three-frame Vulkan presentation on a Windows ARM64 VM
+using Microsoft's software rendering device. Live gameplay and hardware-driver
+coverage remain unverified; use the explicit render probe below on each host.
 
 ## Prerequisites and inventory
 
@@ -89,6 +94,15 @@ executables, `shaders` and `licenses` together. It requires no compiler, MSVC
 runtime installer, additional GUI framework, or managed runtime installation.
 It still requires a working Windows Vulkan graphics driver.
 
+Find the artifact under a successful **Source and build checks** run in
+[GitHub Actions](https://github.com/TrigsC/SWG-64bit/actions). Check the run's
+branch/commit before downloading. Verify the ZIP's SHA-256 against GitHub's
+artifact digest and each extracted file against the `sha256` entries in
+`build.json`. If the artifact expired, use **Run workflow** on the intended
+branch to rebuild it; the workflow and source remain in Git even after the
+artifact expires. A fresh clone uses `main`, so unmerged PR builds require
+checking out the corresponding PR branch explicitly.
+
 To create that bundle locally on a build machine:
 
 ```powershell
@@ -134,8 +148,9 @@ failure exits, cancellation and missing helpers. It also runs
 `SWGLauncher.exe --smoke-test`: the real launcher opens, starts the existing
 synthetic native world-window probe, observes its completion and exits. This
 mode does not contact any server or need game assets, and does not initialize
-Vulkan. Live character listing, zone-in and Vulkan frame presentation still
-need a permitted controlled server and graphics-capable Windows host.
+Vulkan. The separate `windows-client-smoke.exe --render` probe needs no server
+or assets and checks three synthetic frames. Live character listing and zone-in
+still need a permitted server, owned installation and graphics-capable host.
 
 SDK installer reference:
 [LunarG Windows SDK guide](https://vulkan.lunarg.com/doc/view/1.4.313.0/windows/getting_started.html).
