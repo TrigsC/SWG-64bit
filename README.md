@@ -7,13 +7,14 @@ and remains **incomplete**. It is not affiliated with SWGEmu, Lucasfilm,
 Daybreak, or the upstream maintainer. See [LICENSE.md](LICENSE.md): the upstream
 code permits personal, non-commercial forks and redistribution under its terms.
 
-**Supported now:** macOS 26+, Apple Silicon. Windows x64 is a future build and
-test target, not an available launcher option. No original game binaries,
+**Supported now:** macOS 26+, Apple Silicon. Windows x64 has a separate
+development build and launcher; live gameplay and Vulkan presentation remain
+unverified. No original game binaries,
 `.tre` archives, extracted assets, credentials, or private server data are in
 this repository.
 
 For the separate, in-progress Windows x64 build and asset-free smoke path
-(Issue #7), see [windows/README.md](windows/README.md). This development path
+(Issues #7 and #26), see [windows/README.md](windows/README.md). This development path
 does not make the Mac launcher available on Windows.
 
 ## One prompt for a contributor
@@ -56,9 +57,11 @@ without installing anything.
 GitHub Actions runs an asset-free Apple Silicon build and source tests with
 `python3 modernization/scripts/setup.py --ci`. This mode is for CI: it skips
 the local game-file check and asset index, and does not make the resulting app
-playable without the contributor's own installation. Actions also compiles the
-Windows x64 protocol/client core without a renderer; this is not a Windows
-launcher or a verified Windows graphics build.
+playable without the contributor's own installation. Actions also builds the
+Windows x64 core and full client/renderer, runs synthetic tests, and checks
+native window startup. The separate [Windows development launcher](windows/README.md#launcher)
+uses that build; Vulkan presentation and gameplay require a graphics-capable
+test host.
 
 Once set up, say **“work on it”**. Codex should read the selected GitHub issue,
 check for an active claim or PR, implement one scoped change, run the focused

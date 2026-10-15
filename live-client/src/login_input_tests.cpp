@@ -1,4 +1,5 @@
 #include "clientcommon/LoginInput.h"
+#include "clientcommon/LauncherProtocol.h"
 #include <sstream>
 #include <iostream>
 #include <stdexcept>
@@ -14,6 +15,13 @@ int main(int argc,char** argv){try{
         auto credentials=clientcommon::readLoginCredentials(std::cin);
         require(credentials.username=="fixture-user"&&credentials.password=="test-$-\"-\n-secret","Swift/C++ private pipe framing mismatch");
     }else{
+        const auto encoded=clientcommon::credentialFrame("synthetic", "a\r\n\x1a" "z");
+        std::istringstream encodedInput(std::string(encoded.begin(),encoded.end()));
+        require(clientcommon::readLoginCredentials(encodedInput).password=="a\r\n\x1a" "z","Launcher frame altered binary bytes");
+        const auto record=clientcommon::characterRecord(17,0x100000001,"Synthetic character");
+        auto character=clientcommon::parseCharacterRecord(record);
+        require(character&&character->galaxy==17&&character->name=="Synthetic character","Character record roundtrip failed");
+        require(!clientcommon::parseCharacterRecord("NATIVE_CHARACTER 1 1 0a"),"Character record accepted a control byte");
         for(const auto& password:std::vector<std::string>{"secret","a\nb\r\n\"$`","unicode-\xc3\xa9"}) {
             std::istringstream input(frame("account",password));auto result=clientcommon::readLoginCredentials(input);
             require(result.username=="account"&&result.password==password,"Credential bytes changed");

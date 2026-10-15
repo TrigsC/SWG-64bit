@@ -53,8 +53,9 @@ source checks run on PRs. They block known asset/capture file types and
 obvious embedded records; research-note matches are advisory and need human
 review. GitHub checks run after a push, so inspect your staged files first:
 `git diff --cached --name-only`. GitHub Actions also builds and runs the
-asset-free Apple Silicon source suite and compiles the Windows x64 client core.
-The Windows check does not validate a renderer or launcher. Keep locally
+asset-free Apple Silicon source suite and builds the Windows x64 client and
+renderer. Windows checks also exercise private process handoff and launcher/
+world-window startup; Vulkan presentation and live login remain separate. Keep locally
 generated material in ignored `tools/local-assets/`.
 
 `login.swgemu.com` is not a substitute for a controlled integration server:
