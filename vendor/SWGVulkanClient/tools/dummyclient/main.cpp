@@ -1,4 +1,9 @@
 #include <asio.hpp>
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#endif
+#include "clientcommon/LauncherProtocol.h"
 #include <atomic>
 #include <cctype>
 #include <chrono>
@@ -920,11 +925,12 @@ struct CliOptions {
     // Explicit endpoint and account inputs; the native launcher reads the
     // installed server configuration and supplies credentials over stdin.
     std::string host; // Explicit endpoint; the Mac launcher reads swgemu_login.cfg.
-    bool credentialsStdin=false,connectionCheck=false,loginOnly=false,zoneCheck=false,help=false,nativeClient=false;
+    bool credentialsStdin=false,connectionCheck=false,loginOnly=false,zoneCheck=false,help=false,nativeClient=false,listCharacters=false;
     uint16_t port = 44453;
     std::string username;
     std::string password;
     std::string characterName; // empty = default to the first character on the account
+    uint64_t characterId = 0; // launcher selection uses the exact ID, independent of name encoding
 
     bool createCharacter = false;
     std::string newCharName; // empty = request a server-suggested name
@@ -1027,11 +1033,18 @@ CliOptions parseCommandLine(int argc, char** argv) {
         else if (arg == "--credentials-stdin") opts.credentialsStdin=true;
         else if (arg == "--connection-check") opts.connectionCheck=true;
         else if (arg == "--login-only") opts.loginOnly=true;
+        else if (arg == "--list-characters") { opts.listCharacters=true; opts.loginOnly=true; }
         else if (arg == "--zone-check") opts.zoneCheck=true;
         else if (arg == "--help") opts.help=true;
         else if (arg == "--username") opts.username = next("--username");
         else if (arg == "--password") opts.password = next("--password");
         else if (arg == "--character-name") opts.characterName = next("--character-name");
+        else if (arg == "--character-id") {
+            auto value = next("--character-id");
+            if (value.empty() || value.find_first_not_of("0123456789") != value.npos) throw std::runtime_error("Invalid character ID");
+            opts.characterId = std::stoull(value);
+            if (!opts.characterId) throw std::runtime_error("Invalid character ID");
+        }
         else if (arg == "--create-character") opts.createCharacter = true;
         else if (arg == "--char-name") opts.newCharName = next("--char-name");
         else if (arg == "--char-template") opts.charTemplate = next("--char-template");
@@ -1413,6 +1426,12 @@ std::optional<TargetSelection> selectGalaxyAndCharacter(const CliOptions& opts,
     const swgproto::CharacterEntry* chosen=nullptr;
     for(const auto& character:login.characters.characters)
         if(opts.galaxyId<0||character.galaxyId==uint32_t(opts.galaxyId)){chosen=&character;break;}
+    if (opts.characterId) {
+        if (!opts.characterName.empty()) throw std::runtime_error("Choose a character ID or name, not both");
+        chosen = nullptr;
+        for (const auto& character : login.characters.characters)
+            if (character.objectId == opts.characterId && (opts.galaxyId < 0 || character.galaxyId == uint32_t(opts.galaxyId))) chosen = &character;
+    }
     if (!opts.characterName.empty()) {
         chosen=nullptr;
         for (auto& c : login.characters.characters) {
@@ -1611,7 +1630,8 @@ int main(int argc, char** argv) {
         CliOptions opts = parseCommandLine(argc, argv);
         if(opts.help) {
             std::cout<<"Usage: dummyclient --host ADDRESS --port PORT --credentials-stdin [--character-name NAME] [--visualize | --login-only | --zone-check] [--client-path DIRECTORY]\n"
-                       "       dummyclient --host ADDRESS --port PORT --connection-check\n";return 0;
+                       "       dummyclient --host ADDRESS --port PORT --connection-check\n"
+                       "       dummyclient --host ADDRESS --port PORT --credentials-stdin --list-characters\n";return 0;
         }
 
         if (!opts.dumpPobPath.empty()) {
@@ -1633,12 +1653,17 @@ int main(int argc, char** argv) {
 
         if(opts.host.empty())throw std::runtime_error("Specify the login server with --host");
         if(opts.credentialsStdin) {
+#ifdef _WIN32
+            // The length-prefixed frame is binary; CRT text mode corrupts CR/LF
+            // and treats Ctrl-Z as EOF in otherwise valid credential bytes.
+            if (_setmode(_fileno(stdin), _O_BINARY) == -1) throw std::runtime_error("Cannot set binary credential input");
+#endif
             if(!opts.username.empty()||!opts.password.empty())throw std::runtime_error("Choose one credential input method");
             auto credentials=clientcommon::readLoginCredentials(std::cin);
             opts.username=std::move(credentials.username);opts.password=std::move(credentials.password);
         }
         if(!opts.connectionCheck&&(opts.username.empty()||opts.password.empty()))
-            throw std::runtime_error("Enter account credentials in the Mac login window or provide --credentials-stdin");
+            throw std::runtime_error("Enter account credentials in the launcher or provide --credentials-stdin");
         clientcommon::installClientCancellationHandler();
         // One io_context for the whole run, shared by both SoeSession
         // instances below (login, then zone) - SoeSession doesn't own its
@@ -1665,6 +1690,12 @@ int main(int argc, char** argv) {
             return 1;
         }
         std::cout << "\nMilestone 1 complete.\n";
+        if(opts.listCharacters) {
+            if(login->characters.characters.size()>256) throw std::runtime_error("Character list exceeds launcher limit");
+            for(const auto& character:login->characters.characters)
+                std::cout << clientcommon::characterRecord(character.galaxyId, character.objectId, clientcommon::launcherName(character.name)) << '\n';
+            std::cout << "NATIVE_CHARACTER_LIST_COMPLETE\n";
+        }
         if(opts.loginOnly){session.disconnect();return 0;}
 
         auto target = selectGalaxyAndCharacter(opts, *login);

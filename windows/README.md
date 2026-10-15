@@ -1,12 +1,17 @@
 # Windows x64 build milestone (Issue #7)
 
 This is a separate Windows development build, not the Mac app or a completed
-game launcher. Issue #25 covers validation of this foundation; launcher UI
-remains Issue #26. An actual Windows x64 build/test result is required before
+game client. Issue #25 covers validation of this foundation; the development
+launcher below addresses Issue #26. An actual Windows x64 build/test result is required before
 advertising Windows support. The [initial native x64 CI run](https://github.com/TrigsC/SWG-64bit/actions/runs/38650998829)
 compiled the core and full client/renderer, passed five core/startup tests and
-six renderer-build/window tests, and passed the Mac regression suite. Vulkan
-frame presentation remains unverified; use the explicit render probe below.
+six renderer-build/window tests, and passed the Mac regression suite. The
+[Release/package CI run](https://github.com/TrigsC/SWG-64bit/actions/runs/38669586823)
+also passed eight Windows CTest cases, package relocation smoke checks, eleven
+Mac CTest cases and twenty-two Python tests. The downloaded package passed
+launcher startup and three-frame Vulkan presentation on a Windows ARM64 VM
+using Microsoft's software rendering device. Live gameplay and hardware-driver
+coverage remain unverified; use the explicit render probe below on each host.
 
 ## Prerequisites and inventory
 
@@ -76,8 +81,76 @@ commands and results when supplying Issue #7 validation evidence.
 
 Source tests currently covered: login input, movement reporting, remote motion
 interpolation, target selection, and client CLI startup. Mac renderer/asset
-tests, controlled-server checks and launcher UI are outside this initial
-Windows test set. The Python source checks still run separately in CI.
+tests and controlled-server checks are outside this Windows test set. The
+Python source checks still run separately in CI.
+
+## Launcher
+
+After `python scripts/setup_windows.py`, open
+`build/windows-x64/Debug/SWGLauncher.exe`. A downloadable personal test build
+is also retained by the Windows CI job as `swg-windows-x64-test-client` for
+seven days. Extract it as a folder and open its `SWGLauncher.exe`; keep its
+executables, `shaders` and `licenses` together. It requires no compiler, MSVC
+runtime installer, additional GUI framework, or managed runtime installation.
+It still requires a working Windows Vulkan graphics driver.
+
+Find the artifact under a successful **Source and build checks** run in
+[GitHub Actions](https://github.com/TrigsC/SWG-64bit/actions). Check the run's
+branch/commit before downloading. Verify the ZIP's SHA-256 against GitHub's
+artifact digest and each extracted file against the `sha256` entries in
+`build.json`. If the artifact expired, use **Run workflow** on the intended
+branch to rebuild it; the workflow and source remain in Git even after the
+artifact expires. A fresh clone uses `main`, so unmerged PR builds require
+checking out the corresponding PR branch explicitly.
+
+To create that bundle locally on a build machine:
+
+```powershell
+python scripts/setup_windows.py --configuration Release
+python scripts/package_windows.py
+```
+
+The package contains only three x64 executables, eight compiled shaders,
+license notices, a graphics probe shortcut, instructions, and a SHA-256
+manifest. CI smoke-checks the copied executables from outside the bundle.
+The launcher finds helpers beside itself and shaders load relative to the
+helper executable. Its local asset index remains in the chosen installation's
+ignored `modernization/tools/local-assets` folder. Generate that index with
+`python scripts/generate_local_indexes.py` in the contributor checkout.
+
+1. Browse to your owned SWG folder containing `SWGEmu.exe` and `.tre` archives.
+   The launcher reads `swgemu_login.cfg` there for editable server defaults.
+2. Check the server if desired. This performs only the existing SOE handshake.
+3. Enter the account and password, then choose **Load characters**. This
+   contacts the configured login server and populates a bounded selection list.
+4. Select an existing character, re-enter the password, and choose **Connect**.
+   Selection uses the character's full 64-bit ID and galaxy, including when
+   names are identical on different galaxies. The server still validates it.
+5. Close the world window to exit normally, or use **Disconnect** to stop the
+   child process. Closing the launcher also stops its child process group.
+
+Passwords never enter process arguments or settings files. The launcher sends
+the existing bounded binary credential frame through a private stdin pipe,
+clears the password control after transfer, and erases the transfer buffer.
+Windows binary stdin mode preserves CR/LF and Ctrl-Z bytes. There is no saved
+password or launcher log. Raw helper output is discarded; bounded character
+records and known status markers update the UI. Account/server/installation
+changes require loading the list again before connecting.
+
+Connection failures, timeouts and process exit codes are visible. Startup has
+a 90-second timeout; a ready world has no fixed session timeout. **Disconnect**
+forcibly stops the managed process group; a graceful in-protocol disconnect is
+not established by this launcher. Non-ASCII game installation paths remain
+limited by the existing helper's narrow Windows argument/path handling.
+
+CI runs real child-process tests for credential bytes, Windows argument quoting,
+failure exits, cancellation and missing helpers. It also runs
+`SWGLauncher.exe --smoke-test`: the real launcher opens, starts the existing
+synthetic native world-window probe, observes its completion and exits. This
+mode does not contact any server or need game assets, and does not initialize
+Vulkan. The separate `windows-client-smoke.exe --render` probe needs no server
+or assets and checks three synthetic frames. Live character listing and zone-in
+still need a permitted server, owned installation and graphics-capable host.
 
 SDK installer reference:
 [LunarG Windows SDK guide](https://vulkan.lunarg.com/doc/view/1.4.313.0/windows/getting_started.html).

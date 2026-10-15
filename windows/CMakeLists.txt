@@ -5,6 +5,10 @@ if(NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8 OR NOT CMAKE_GENERATOR_PLATFORM 
 endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# Keep the personal test bundle independent of a Visual Studio installation
+# and its non-redistributable debug runtime. Apply the policy to older deps too.
+set(CMAKE_POLICY_DEFAULT_CMP0091 NEW CACHE STRING "MSVC runtime policy for fetched dependencies")
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "Static Windows CRT")
 enable_testing()
 get_filename_component(MODERN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 add_subdirectory("${MODERN_DIR}/vendor/SWGVulkanClient" swg)
@@ -24,9 +28,26 @@ add_test(NAME windows_client_help COMMAND dummyclient --help)
 set_tests_properties(windows_client_help PROPERTIES TIMEOUT 15 LABELS "source;smoke"
     PASS_REGULAR_EXPRESSION "Usage: dummyclient")
 
+add_library(windows-launcher-process STATIC launcher/Process.cpp)
+target_compile_definitions(windows-launcher-process PUBLIC UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0A00)
+target_compile_options(windows-launcher-process PUBLIC /utf-8)
+target_include_directories(windows-launcher-process PUBLIC launcher)
+target_link_libraries(windows-launcher-process PUBLIC clientcommon::clientcommon)
+add_executable(windows-launcher-tests launcher/Tests.cpp)
+target_link_libraries(windows-launcher-tests PRIVATE windows-launcher-process)
+add_test(NAME windows_launcher_handoff COMMAND windows-launcher-tests)
+set_tests_properties(windows_launcher_handoff PROPERTIES TIMEOUT 30 LABELS "source"
+    PASS_REGULAR_EXPRESSION "LAUNCHER_TESTS_PASS")
+
 if(SWG_BUILD_RENDERER)
+    add_executable(SWGLauncher WIN32 launcher/Main.cpp)
+    target_link_libraries(SWGLauncher PRIVATE windows-launcher-process ole32 shell32)
+    add_dependencies(SWGLauncher dummyclient)
     add_executable(windows-client-smoke smoke.cpp)
     target_link_libraries(windows-client-smoke PRIVATE renderer::renderer)
+    add_dependencies(SWGLauncher windows-client-smoke)
+    add_test(NAME windows_launcher_smoke COMMAND SWGLauncher --smoke-test)
+    set_tests_properties(windows_launcher_smoke PROPERTIES TIMEOUT 20 LABELS "source;smoke")
     add_test(NAME windows_window_smoke COMMAND windows-client-smoke --window-only)
     set_tests_properties(windows_window_smoke PROPERTIES TIMEOUT 20 LABELS "source;smoke"
         PASS_REGULAR_EXPRESSION "WINDOW_SMOKE_PASS")

@@ -7,6 +7,47 @@ configuration, session logs, screenshots, packet captures, recorded animation
 matrices, or derived asset indexes. Do not put local
 absolute paths, server addresses, character names or secrets in a PR.
 
+## Select the host platform before setup
+
+Read [windows/README.md](windows/README.md) on Windows. The Mac launcher and
+`scripts/setup.py` require Apple Silicon/macOS and are not the Windows setup
+path. Use the following commands from the `modernization` repository root:
+
+```powershell
+python scripts/setup_windows.py --check
+python scripts/setup_windows.py --core
+python scripts/setup_windows.py --configuration Release
+python scripts/package_windows.py
+```
+
+The Windows build requires VS2022/v143 x64 tools, a Windows SDK, CMake/CTest,
+Git, Python and the x64 Vulkan SDK. The check reports missing prerequisites;
+it does not install them. The exact pinned Vulkan SDK install/checksum steps
+are in `.github/workflows/publication-check.yml`. Build outputs stay in ignored
+`build/windows-x64`; the personal test bundle is `build/windows-test-client`.
+
+For a small VM or a user who only wants to test a binary, prefer the CI
+artifact over installing a compiler and SDKs. Find the successful **Source
+and build checks** run for the intended branch/commit and download
+`swg-windows-x64-test-client` from its artifacts. Artifacts expire after seven
+days; run the workflow again if needed. Verify GitHub's ZIP digest and the
+extracted `build.json` file hashes. Keep executables, shaders and license
+notices together, then open `SWGLauncher.exe`. The workflow definition is the
+reproducible build recipe; the expiring artifact is not the source of truth.
+
+For owned-asset testing, generate only the ignored local object-name index:
+`python scripts/generate_local_indexes.py`. The launcher reads it from the
+chosen installation's `modernization/tools/local-assets`. Never include that
+index or original game files in a package, commit or CI upload.
+
+Windows validation has separate levels: compile/tests, launcher/world-window
+smoke, three-frame Vulkan presentation, and permitted live server checks.
+The copied package is smoke-checked in CI. Run `SWGLauncher.exe --smoke-test`
+and `windows-client-smoke.exe --render` locally without an account/server to
+check startup and graphics. Windows ARM64 uses x64 emulation; report it
+separately from native x64 CI. A software-renderer smoke pass is not evidence
+of hardware performance, live login, or gameplay parity.
+
 Before work: read README.md, CONTRIBUTING.md, and WORK_QUEUE.md; inspect open
 GitHub issues and PRs. Run `python3 scripts/work_queue.py --platform mac --limit 3`
 on a Mac (or choose `windows` / `research` as appropriate) to shortlist issues;
@@ -35,11 +76,15 @@ SWGEmu/Pre-CU client and REA only for narrow, read-only behavior research when
 a concrete question remains. Use original assets from the
 local installation for offline tests. Do not execute unsolicited admin commands,
 automated gameplay or bulk traffic on public servers. No production-server
-login is part of CI. The app remains Mac ARM64 only until Windows x64 has an
-actual build and test result.
+login is part of CI. The Swift/AppKit app remains Mac ARM64 only; Windows uses
+its separate native launcher and verified x64 build path.
 
-Run focused tests and `python3 scripts/test.py` before opening a draft PR.
-When the local `.tre` files are available and relevant, run
+Run focused tests before opening a draft PR. On Mac, use `python3 scripts/test.py`;
+on Windows, use the Windows core and full Release build/test commands above.
+Run Python unittest discovery and the publication audit on either platform.
+If local build tools are unavailable, report that limit and obtain the native
+compile/test result through CI. The Mac test runner's missing build is not a
+Windows test failure. When local `.tre` files are available and relevant, run
 `python3 scripts/test.py --assets`. State the test results and any unverified
 live behavior. Keep the upstream license and attribution intact. Keep generated
 dependencies, builds and archives out of Git. Never claim complete client parity

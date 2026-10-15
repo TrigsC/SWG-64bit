@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <filesystem>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -1830,11 +1831,21 @@ void VulkanRenderer::createTerrainPipelineObjects() {
 
 VkShaderModule VulkanRenderer::loadShaderModule(const char* spirvFileBaseName,
                                                  const char* entryPoint) const {
-    std::string path = std::string(SWG_SHADER_SPV_DIR) + "/" + spirvFileBaseName + "_" +
-                        entryPoint + ".spv";
+    std::filesystem::path shaderDirectory = SWG_SHADER_SPV_DIR;
+#ifdef _WIN32
+    // A downloaded test bundle must not depend on the CI checkout path.
+    std::wstring executable(32768, L'\0');
+    auto length = GetModuleFileNameW(nullptr, executable.data(), static_cast<DWORD>(executable.size()));
+    if (length && length < executable.size()) {
+        executable.resize(length);
+        auto bundled = std::filesystem::path(executable).parent_path() / "shaders";
+        if (std::filesystem::is_directory(bundled)) shaderDirectory = std::move(bundled);
+    }
+#endif
+    auto path = shaderDirectory / (std::string(spirvFileBaseName) + "_" + entryPoint + ".spv");
     std::ifstream file(path, std::ios::ate | std::ios::binary);
     if (!file.is_open()) {
-        throw std::runtime_error("VulkanRenderer: failed to open compiled shader: " + path);
+        throw std::runtime_error("VulkanRenderer: failed to open compiled shader: " + path.string());
     }
     size_t fileSize = static_cast<size_t>(file.tellg());
     std::vector<char> buffer(fileSize);

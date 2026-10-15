@@ -9,6 +9,7 @@
 #ifdef SWG_HAS_VISUALIZER
 
 #include "Visualizer.h"
+#include <cstdlib>
 #include "ClientArchiveOrder.h"
 #include "MaterialResolver.h"
 #include "TargetHud.h"
@@ -548,7 +549,8 @@ public:
         // Core3 uses server-side for objectCrc (soe::MessageHash::compute(),
         // confirmed identical to SharedObjectTemplate::getClientObjectCRC()
         // by reading the Core3 reference source directly).
-        std::ifstream listFile(std::string(SWG_ASSETS_DATA_DIR) + "/object_template_candidates.txt");
+        const char* localAssets = std::getenv("SWG_LOCAL_ASSETS_DIR");
+        std::ifstream listFile(std::filesystem::path(localAssets ? localAssets : SWG_ASSETS_DATA_DIR) / "object_template_candidates.txt");
         if (listFile.is_open()) {
             std::string line;
             while (std::getline(listFile, line)) {
@@ -724,7 +726,9 @@ public:
     explicit RealBuildingResolver(RealMeshResolver& meshResolver) {
         archives_ = meshResolver.archivePointers();
 
-        std::ifstream listFile(std::string(SWG_ASSETS_DATA_DIR) + "/object_template_candidates.txt");
+        const char* localAssets = std::getenv("SWG_LOCAL_ASSETS_DIR");
+        const std::filesystem::path localDirectory(localAssets ? localAssets : SWG_ASSETS_DATA_DIR);
+        std::ifstream listFile(localDirectory / "object_template_candidates.txt");
         if (listFile.is_open()) {
             std::string line;
             while (std::getline(listFile, line)) {
@@ -740,7 +744,7 @@ public:
         // Optional local terrain-grading map. Community checkouts do not
         // distribute the private server-derived map, so this remains empty
         // unless the contributor supplies their own map under tools/local-assets.
-        std::ifstream gradingMapFile(std::string(SWG_ASSETS_DATA_DIR) + "/real_terrain_grading_map.txt");
+        std::ifstream gradingMapFile(localDirectory / "real_terrain_grading_map.txt");
         if (gradingMapFile.is_open()) {
             std::string line;
             while (std::getline(gradingMapFile, line)) {

@@ -77,4 +77,13 @@ jobs:
           "$sdk\Bin" >> $env:GITHUB_PATH
       - name: Build client and renderer; run source and Win32 window smoke tests
         working-directory: modernization
-        run: python scripts/setup_windows.py
+        run: python scripts/setup_windows.py --configuration Release
+      - name: Package and smoke-check relocatable personal test binaries
+        working-directory: modernization
+        run: python scripts/package_windows.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: swg-windows-x64-test-client
+          path: modernization/build/windows-test-client/
+          retention-days: 7
+          if-no-files-found: error
