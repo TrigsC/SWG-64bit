@@ -1,8 +1,8 @@
-# SWG-64bit — Apple Silicon / SWGEmu Pre-CU
+# SWG-64bit — Windows and Apple Silicon / SWGEmu Pre-CU Client
 
 An experimental, native ARM64 and 64-bit SWGEmu client built from the
 [SWGVulkanClient](https://github.com/maddogg221/SWGVulkanClient) codebase. The
-current Mac app renders a world, handles movement and early HUD/chat features,
+current Windows and Mac app renders a world, handles movement and early HUD/chat features,
 and remains **incomplete**. It is not affiliated with SWGEmu, Lucasfilm,
 Daybreak, or the upstream maintainer. See [LICENSE.md](LICENSE.md): the upstream
 code permits personal, non-commercial forks and redistribution under its terms.
