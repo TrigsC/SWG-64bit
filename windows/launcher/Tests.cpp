@@ -41,6 +41,7 @@ int wmain(int argc, wchar_t** argv) {
         if (argc > 1 && std::wstring_view(argv[1]) == L"--fixture") return fixture(argc, argv);
         if (argc > 1 && std::wstring_view(argv[1]) == L"--fail") return 7;
         if (argc > 1 && std::wstring_view(argv[1]) == L"--hang") { Sleep(INFINITE); return 1; }
+        if (argc > 1 && std::wstring_view(argv[1]) == L"--callback-error") { std::cout << "CALLBACK_ERROR\n" << std::flush; Sleep(30); return 0; }
         launcher::validateHost(L"example.invalid"); launcher::validateHost(L"[::1]");
         rejects([] { launcher::validateHost(L"https://example.invalid"); });
         rejects([] { launcher::validateHost(L"server --password injected"); });
@@ -72,6 +73,15 @@ int wmain(int argc, wchar_t** argv) {
         require(finish(process, output) == 7, "Child exit status was lost");
         process.start(self(), {L"--hang"}, self().parent_path(), frame); process.stop();
         require(finish(process, output) != 0, "Cancellation did not stop the child");
+        process.start(self(), {L"--callback-error"}, self().parent_path(), frame);
+        int callbacks = 0;
+        const auto callbackDeadline = GetTickCount64() + 5000;
+        while (process.active() && GetTickCount64() < callbackDeadline) {
+            try { process.poll([&](const auto&) { ++callbacks; throw std::runtime_error("Synthetic parser failure"); }); }
+            catch (const std::runtime_error& error) { require(std::string(error.what()) == "Synthetic parser failure", "Unexpected callback error"); }
+            Sleep(5);
+        }
+        require(!process.active() && callbacks == 1, "Callback failure was replayed or prevented child cleanup");
         frame = clientcommon::credentialFrame("Synthetic account", "Synthetic password");
         rejects([&] { process.start(self().parent_path() / "missing-helper.exe", {}, self().parent_path(), frame); });
         require(frame.empty(), "Failed spawn retained credential frame");

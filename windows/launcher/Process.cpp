@@ -65,8 +65,10 @@ void Process::start(const std::filesystem::path& executable, const std::vector<s
 void Process::consume(std::string_view bytes, const std::function<void(const std::string&)>& line) {
     for (char ch : bytes) {
         if (ch == '\n') {
-            if (!dropping_) { if (!pending_.empty() && pending_.back() == '\r') pending_.pop_back(); line(pending_); }
+            const bool deliver = !dropping_;
+            auto complete = std::move(pending_);
             pending_.clear(); dropping_ = false;
+            if (deliver) { if (!complete.empty() && complete.back() == '\r') complete.pop_back(); line(complete); }
         } else if (!dropping_) {
             if (pending_.size() == 4096) { pending_.clear(); dropping_ = true; }
             else pending_ += ch;
@@ -88,8 +90,10 @@ std::optional<DWORD> Process::poll(const std::function<void(const std::string&)>
     DWORD remaining = 0;
     if (PeekNamedPipe(output_.value, nullptr, 0, nullptr, &remaining, nullptr) && remaining) return {};
     DWORD exit = 1; GetExitCodeProcess(process_.value, &exit);
-    if (!pending_.empty() && !dropping_) line(pending_);
+    auto complete = std::move(pending_);
+    const bool deliver = !dropping_ && !complete.empty();
     process_.reset(); output_.reset(); job_.reset(); pending_.clear();
+    if (deliver) line(complete);
     return exit;
 }
 void Process::stop() {
