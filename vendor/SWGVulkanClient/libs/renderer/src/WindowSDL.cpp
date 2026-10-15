@@ -27,7 +27,9 @@ std::string utf8(const wchar_t* title) {
 Window::Window(int width, int height, const wchar_t* title) {
     if(focusWindow) throw std::runtime_error("Window: input API supports one window per process");
     if(!SDL_Init(SDL_INIT_VIDEO)) throw failure("SDL_Init");
-    if(!SDL_Vulkan_LoadLibrary(SWG_VULKAN_LIBRARY_PATH)) {auto error=failure("SDL_Vulkan_LoadLibrary");SDL_QuitSubSystem(SDL_INIT_VIDEO);throw error;}
+    // The executable already links Vulkan. Let SDL use that loader instead of
+    // a build-tree path that becomes invalid when the app is moved or rebuilt.
+    if(!SDL_Vulkan_LoadLibrary(nullptr)) {auto error=failure("SDL_Vulkan_LoadLibrary");SDL_QuitSubSystem(SDL_INIT_VIDEO);throw error;}
     hwnd_=SDL_CreateWindow(utf8(title).c_str(),width,height,SDL_WINDOW_VULKAN|SDL_WINDOW_RESIZABLE|SDL_WINDOW_HIGH_PIXEL_DENSITY);
     if(!hwnd_) {auto error=failure("SDL_CreateWindow");SDL_QuitSubSystem(SDL_INIT_VIDEO);throw error;}
     focusWindow=hwnd_;inputOwner=this;SDL_GetWindowSizeInPixels(hwnd_,&width_,&height_);

@@ -27,6 +27,7 @@ cp -L "$modern_dir/tools/vulkan/sdl-install/lib/libSDL3.0.dylib" "$world_dir/Con
 install_name_tool -delete_rpath "$modern_dir/tools/vulkan/loader-install/lib" "$world_dir/Contents/MacOS/SWGNativeWorld"
 install_name_tool -delete_rpath "$modern_dir/tools/vulkan/sdl-install/lib" "$world_dir/Contents/MacOS/SWGNativeWorld"
 install_name_tool -add_rpath '@executable_path/../Frameworks' "$world_dir/Contents/MacOS/SWGNativeWorld"
+strip -x "$world_dir/Contents/MacOS/SWGNativeWorld"
 cp "$modern_dir/vendor/SWGVulkanClient/LICENSE.md" "$app_dir/Contents/Resources/SWGVulkanClient-LICENSE.md"
 "$modern_dir/tools/python/bin/python" "$client_dir/package-client.py"
 codesign --force --sign - "$world_dir"
