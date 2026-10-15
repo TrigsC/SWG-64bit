@@ -82,6 +82,14 @@ class WindowsSetupTests(unittest.TestCase):
         self.assertEqual(run.call_args.args[0][-1], "--render")
         self.assertEqual(run.call_args.kwargs["timeout"], 30)
 
+    @patch.object(setup, "inventory", side_effect=ready)
+    @patch.object(setup.subprocess, "run")
+    def test_release_configuration_is_used_for_build_and_tests(self, run, inventory):
+        with patch("sys.argv", ["setup_windows.py", "--configuration", "Release"]):
+            setup.main()
+        self.assertIn("Release", run.call_args_list[1].args[0])
+        self.assertEqual(run.call_args_list[2].args[0][-2:], ("-C", "Release"))
+
 
 if __name__ == "__main__":
     unittest.main()

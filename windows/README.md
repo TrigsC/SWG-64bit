@@ -82,9 +82,27 @@ Python source checks still run separately in CI.
 ## Launcher
 
 After `python scripts/setup_windows.py`, open
-`build/windows-x64/Debug/SWGLauncher.exe`. Keep it in this development build
-tree so it can locate the verified `dummyclient.exe` and its compiled shaders.
-It requires no additional GUI framework or managed runtime installation.
+`build/windows-x64/Debug/SWGLauncher.exe`. A downloadable personal test build
+is also retained by the Windows CI job as `swg-windows-x64-test-client` for
+seven days. Extract it as a folder and open its `SWGLauncher.exe`; keep its
+executables, `shaders` and `licenses` together. It requires no compiler, MSVC
+runtime installer, additional GUI framework, or managed runtime installation.
+It still requires a working Windows Vulkan graphics driver.
+
+To create that bundle locally on a build machine:
+
+```powershell
+python scripts/setup_windows.py --configuration Release
+python scripts/package_windows.py
+```
+
+The package contains only three x64 executables, eight compiled shaders,
+license notices, a graphics probe shortcut, instructions, and a SHA-256
+manifest. CI smoke-checks the copied executables from outside the bundle.
+The launcher finds helpers beside itself and shaders load relative to the
+helper executable. Its local asset index remains in the chosen installation's
+ignored `modernization/tools/local-assets` folder. Generate that index with
+`python scripts/generate_local_indexes.py` in the contributor checkout.
 
 1. Browse to your owned SWG folder containing `SWGEmu.exe` and `.tre` archives.
    The launcher reads `swgemu_login.cfg` there for editable server defaults.

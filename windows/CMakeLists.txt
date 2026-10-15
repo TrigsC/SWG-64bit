@@ -5,6 +5,10 @@ if(NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8 OR NOT CMAKE_GENERATOR_PLATFORM 
 endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# Keep the personal test bundle independent of a Visual Studio installation
+# and its non-redistributable debug runtime. Apply the policy to older deps too.
+set(CMAKE_POLICY_DEFAULT_CMP0091 NEW CACHE STRING "MSVC runtime policy for fetched dependencies")
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "Static Windows CRT")
 enable_testing()
 get_filename_component(MODERN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 add_subdirectory("${MODERN_DIR}/vendor/SWGVulkanClient" swg)

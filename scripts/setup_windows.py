@@ -78,6 +78,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="report prerequisites without installing or building")
     parser.add_argument("--core", action="store_true", help="compile and test without Vulkan/renderer")
+    parser.add_argument("--configuration", choices=("Debug", "Release"), default="Debug")
     parser.add_argument("--render-smoke", action="store_true", help="also present three frames; requires a Vulkan graphics driver")
     args = parser.parse_args()
     if args.core and args.render_smoke:
@@ -94,10 +95,10 @@ def main():
     def run(*command):
         subprocess.run(command, cwd=ROOT / "windows", check=True)
     run(info["cmake"], "--preset", "windows-x64", "-DSWG_BUILD_RENDERER=" + ("OFF" if args.core else "ON"))
-    run(info["cmake"], "--build", "--preset", "windows-x64", "--parallel", "2")
-    run(info["ctest"], "--preset", "windows-x64")
+    run(info["cmake"], "--build", "--preset", "windows-x64", "--config", args.configuration, "--parallel", "2")
+    run(info["ctest"], "--preset", "windows-x64", "-C", args.configuration)
     if args.render_smoke:
-        subprocess.run([str(ROOT / "build/windows-x64/Debug/windows-client-smoke.exe"), "--render"],
+        subprocess.run([str(ROOT / "build/windows-x64" / args.configuration / "windows-client-smoke.exe"), "--render"],
                        cwd=ROOT / "windows", check=True, timeout=30)
 
 

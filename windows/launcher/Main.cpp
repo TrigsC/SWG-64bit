@@ -21,7 +21,7 @@ std::wstring text(HWND window, int id) {
 class App {
     HWND window_ = nullptr;
     launcher::Process child_;
-    std::filesystem::path build_, helper_;
+    std::filesystem::path build_, helper_, smokeHelper_;
     std::vector<clientcommon::LauncherCharacter> characters_;
     launcher::Mode mode_ = launcher::Mode::Check;
     std::wstring listingRoot_, listingHost_, listingPort_, listingUser_;
@@ -69,6 +69,11 @@ class App {
             if (index != CB_ERR && static_cast<size_t>(index) < characters_.size()) character = characters_[index];
         }
         auto arguments = launcher::arguments(root, host, port, mode, character);
+        // The derived index stays in the contributor's checkout, never in the
+        // downloadable executable package or CI artifact.
+        auto localAssets = std::filesystem::path(root) / "modernization/tools/local-assets";
+        if (!SetEnvironmentVariableW(L"SWG_LOCAL_ASSETS_DIR", localAssets.c_str()))
+            throw std::runtime_error("Cannot select the local asset index directory");
         std::vector<unsigned char> frame;
         if (mode != launcher::Mode::Check) {
             auto user = launcher::utf8(text(window_, User));
@@ -127,7 +132,11 @@ class App {
         else message(worldReady_ ? L"World closed. Enter the password again to reconnect." : L"Client exited before the world was ready.");
     }
     void create() {
-        auto root = build_.parent_path().parent_path().parent_path();
+        auto root = modulePath().parent_path();
+        for (int depth = 0; depth < 7 && !launcher::ownedInstallation(root); ++depth) {
+            if (root == root.parent_path()) break;
+            root = root.parent_path();
+        }
         auto control = [&](const wchar_t* type, const wchar_t* value, DWORD style, int id, int x, int y, int w, int h) {
             auto handle = CreateWindowExW(std::wstring_view(type) == L"EDIT" ? WS_EX_CLIENTEDGE : 0,
                 type, value, WS_CHILD | WS_VISIBLE | style, x, y, w, h, window_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), nullptr, nullptr);
@@ -156,7 +165,7 @@ class App {
         SetTimer(window_, timerId, 50, nullptr);
         if (smoke_) {
             std::vector<unsigned char> frame;
-            child_.start(build_ / "Debug/windows-client-smoke.exe", {L"--window-only"}, build_, frame);
+            child_.start(smokeHelper_, {L"--window-only"}, modulePath().parent_path(), frame);
             deadline_ = GetTickCount64() + 10000;
         }
     }
@@ -191,7 +200,11 @@ public:
     int run(HINSTANCE instance, bool smoke) {
         smoke_ = smoke;
         build_ = modulePath().parent_path().parent_path();
-        helper_ = build_ / "swg/tools/dummyclient/Debug/dummyclient.exe";
+        const auto directory = modulePath().parent_path();
+        const auto configuration = directory.filename();
+        helper_ = directory / "dummyclient.exe";
+        if (!std::filesystem::is_regular_file(helper_)) helper_ = build_ / "swg/tools/dummyclient" / configuration / "dummyclient.exe";
+        smokeHelper_ = directory / "windows-client-smoke.exe";
         WNDCLASSW klass{}; klass.hInstance = instance; klass.lpfnWndProc = procedure;
         klass.lpszClassName = L"SWGWindowsLauncher"; klass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
         klass.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
