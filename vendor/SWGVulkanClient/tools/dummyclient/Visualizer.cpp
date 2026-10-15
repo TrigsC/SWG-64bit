@@ -5186,12 +5186,14 @@ void runVisualizerImpl(soe::SoeSession* zoneSession, soe::MessageDispatcher* dis
                     return info;
                 };
                 auto speakerName=[&](uint64_t id)->std::optional<std::u16string>{auto info=participantContext(id);if(!info||!info->name)return {};return clientcommon::targetDisplayName(*info->name);};
-                for(const auto index:localizedSchedule.order(nextPresentation)){auto& line=nextPresentation.lines[index];
+                for(const auto index:localizedSchedule.order(nextPresentation)){auto& line=nextPresentation.lines[index];bool localizedReady=true;
                     if(line.localized){
-                        auto resolved=localizedChat?localizedChat->formatRetainedWithContext(line.sequence,*line.localized,participantContext):std::nullopt;
-                        if(resolved){line.text=std::move(*resolved);++localizedResolved;}else {line.text.clear();unresolvedLocalized=true;++localizedDeferred;}
+                        auto presented=localizedChat?localizedChat->presentRetainedWithContext(line.sequence,*line.localized,participantContext):dummyclient::LocalizedChat::Presentation{u"A localized message is unavailable.",false};
+                        line.text=std::move(presented.text);
+                        localizedReady=presented.resolved;
+                        if(localizedReady)++localizedResolved;else {unresolvedLocalized=true;++localizedDeferred;}
                     }
-                    if(commandCatalog&&!line.text.empty())line.text=clientcommon::formatNeutralSpatialChat(line,speakerName(line.sender).value_or(u""),commandCatalog->sayVerb(),commandCatalog->sayType());
+                    if(commandCatalog&&localizedReady&&!line.text.empty())line.text=clientcommon::formatNeutralSpatialChat(line,speakerName(line.sender).value_or(u""),commandCatalog->sayVerb(),commandCatalog->sayType());
                 }
                 auto selectedPresentation=chatSelected;for(auto& line:selectedPresentation.lines){auto found=std::find_if(nextPresentation.lines.begin(),nextPresentation.lines.end(),[&](const auto& other){return other.sequence==line.sequence;});if(found!=nextPresentation.lines.end())line=*found;}
                 nextPresentation.lines.resize(globalCount);

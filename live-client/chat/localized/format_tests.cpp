@@ -43,12 +43,13 @@ TEST_CASE("reference paths and resource cache loads stay bounded and missing dat
  chat.beginPass();auto before=reads;for(int i=100;i<110;++i){p.id={"missing_native_"+std::to_string(i),"key"};CHECK_FALSE(chat.format(p,noName));}CHECK(reads-before==4);
 }
 
-TEST_CASE("unsupported original perspective and floating tokens defer while numeric suffixes remain literal"){
+TEST_CASE("unsupported original perspective defers while finite floating tokens resolve"){
  LocalizedChat chat(resource);swgproto::StringIdChatParameter p;p.id={"error_message","prose_at_xp_limit"};p.to.text=u"Combat";p.di=100;
  CHECK(chat.format(p,noName)==u"You cannot gain anymore 'Combat' experience. (limit: 100pts)");
  chat.beginPass();p.id={"socials","wave"};CHECK_FALSE(chat.format(p,noName));
  chat.beginPass();p.id={"cbt_spam","dizzy_fall_down"};CHECK_FALSE(chat.format(p,noName));
- chat.beginPass();p.id={"event_perk","racing_lap_time"};CHECK_FALSE(chat.format(p,noName));
+ chat.beginPass();p.id={"event_perk","racing_lap_time"};p.df=2.5f;
+ auto floatText=chat.format(p,noName);REQUIRE(floatText);CHECK(floatText->ends_with(u"2.5"));
 }
 
 TEST_CASE("successful historic resolutions survive resource eviction and unresolved lines never starve later tables"){
