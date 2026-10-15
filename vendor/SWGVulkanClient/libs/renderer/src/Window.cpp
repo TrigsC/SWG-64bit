@@ -45,7 +45,7 @@ LRESULT CALLBACK Window::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
             break;
         }
         case WM_KILLFOCUS: {
-            if(self) {self->keyPresses_.clear();for(int i=0;i<3;++i)self->dragDx_[i]=self->dragDy_[i]=0;}
+            if(self) {self->keyPresses_.clear();self->actionSelection_.reset();self->actionMouseHeld_=false;for(int i=0;i<3;++i)self->dragDx_[i]=self->dragDy_[i]=0;}
             break;
         }
         case WM_MOUSEMOVE: {
@@ -73,6 +73,17 @@ LRESULT CALLBACK Window::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
             }
             return 0;
         }
+        case WM_LBUTTONDOWN: {
+            if(self){
+                const int x=GET_X_LPARAM(lParam),y=GET_Y_LPARAM(lParam);
+                for(size_t a=0;a<self->actionRects_.size();++a){const auto& r=self->actionRects_[a];
+                    if(x>=r[0]&&x<r[2]&&y>=r[1]&&y<r[3]){self->actionSelection_=a;self->actionMouseHeld_=true;break;}}
+            }
+            break;
+        }
+        case WM_LBUTTONUP:
+            if(self)self->actionMouseHeld_=false;
+            break;
         default:
             break;
     }
@@ -146,6 +157,7 @@ bool Window::isKeyDown(int virtualKeyCode) {
 
 bool Window::isMouseButtonDown(int button) {
     if (GetForegroundWindow() != g_focusHwnd) return false;
+    if(button==0&&g_focusHwnd){auto* owner=reinterpret_cast<Window*>(GetWindowLongPtrW(g_focusHwnd,GWLP_USERDATA));if(owner&&owner->actionMouseHeld_)return false;}
     int vk = (button == 0) ? VK_LBUTTON : (button == 1) ? VK_RBUTTON : VK_MBUTTON;
     return (GetAsyncKeyState(vk) & 0x8000) != 0;
 }

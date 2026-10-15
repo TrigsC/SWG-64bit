@@ -111,6 +111,11 @@ target_compile_features(target-tests PRIVATE cxx_std_20)
 target_link_libraries(target-tests PRIVATE clientcommon::clientcommon doctest::doctest)
 add_test(NAME native_target_selection COMMAND target-tests)
 
+add_executable(action-toolbar-tests ../live-client/actions/action_tests.cpp)
+target_compile_features(action-toolbar-tests PRIVATE cxx_std_20)
+target_link_libraries(action-toolbar-tests PRIVATE clientcommon::clientcommon doctest::doctest)
+add_test(NAME native_action_toolbar COMMAND action-toolbar-tests)
+
 add_executable(original-hud-tests ../live-client/hud/original_hud_tests.cpp)
 target_compile_features(original-hud-tests PRIVATE cxx_std_20)
 target_link_libraries(original-hud-tests PRIVATE clientvisualizer doctest::doctest)

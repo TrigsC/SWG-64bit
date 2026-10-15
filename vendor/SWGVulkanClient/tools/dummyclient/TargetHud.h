@@ -6,6 +6,7 @@
 #include "clientcommon/ChatLog.h"
 #include "clientcommon/ChatText.h"
 #include "clientcommon/ScreenNotices.h"
+#include "clientcommon/ActionToolbar.h"
 #include "renderer/TextFocus.h"
 #include "renderer/VulkanRenderer.h"
 #include <chrono>
@@ -22,6 +23,7 @@ public:
     void stateHeartbeat(){selfStates_.heartbeat(assets_.stateFadeSpeed);targetStates_.heartbeat(assets_.stateFadeSpeed);}
     void resetHamFeedback(){for(auto* p:{&selfFeedback_,&targetFeedback_})for(auto& row:*p)row.reset();}
     std::array<int,4> drawChat(const clientcommon::ChatSnapshot&,const renderer::TextFocus&,float density=1.f,int wheelDelta=0,std::optional<size_t> activeTab={},std::optional<size_t> hoveredTab={});
+    std::vector<std::array<int,4>> drawActions(const clientcommon::ActionToolbar&,bool hasTarget,uint64_t now,float density=1.f);
     const std::vector<std::array<int,4>>& chatTabRects()const{return chatTabRects_;}
     void drawNotices(const clientcommon::ChatSnapshot& raw,const clientcommon::ChatSnapshot& presented,float density=1.f,std::optional<uint64_t> tick={},bool pulse=true);
     void noticeHeartbeat(){if(notices_)notices_->heartbeat();if(noticeAssets_)noticeParentOpacity_=std::max(noticeAssets_->parentIdleOpacity,noticeParentOpacity_-noticeAssets_->parentFadeSpeed/60.f);}

@@ -2730,6 +2730,7 @@ void runVisualizerImpl(soe::SoeSession* zoneSession, soe::MessageDispatcher* dis
     renderer::VulkanRenderer gfx(window.handle(), window.width(), window.height());
     window.enableTextEntry(nativeClient);window.enableTextSubmission(nativeClient&&commandSubmission);clientcommon::ChatSnapshot chatSnapshot,chatPresentation,chatSelected,chatSelectedPresentation;uint64_t lastSelectedRawRevision=UINT64_MAX,resolveEpoch=0;
     std::optional<dummyclient::CommandCatalog> commandCatalog;
+    clientcommon::ActionToolbar actionToolbar;
     std::optional<dummyclient::LocalizedChat> localizedChat;clientcommon::ChatResolveSchedule localizedSchedule;bool unresolvedLocalized=false;uint64_t lastLocalizedResolveMs=0,lastLocalizedRevision=0,lastPresentedRawRevision=0;size_t lastLocalizedResolved=0,lastLocalizedDeferred=0;
     clientcommon::TargetSelection targetSelection;
     std::optional<dummyclient::TargetHud> targetHud;
@@ -2789,6 +2790,14 @@ void runVisualizerImpl(soe::SoeSession* zoneSession, soe::MessageDispatcher* dis
     if(nativeClient&&commandSubmission){
         auto chatAssets=[&](const std::string& path){return meshResolver.extract(path);};
         commandCatalog=dummyclient::CommandCatalog::load(chatAssets);localizedChat.emplace(chatAssets);
+        constexpr std::array<const char*,4> firstActions={"attack","peace","kneel","stand"};
+        for(size_t i=0;i<firstActions.size();++i){
+            const auto found=commandCatalog->definitions().find(firstActions[i]);
+            const bool available=found!=commandCatalog->definitions().end()&&!found->second.disabled&&
+                (!found->second.clientOwned||i>=2);
+            auto label=found!=commandCatalog->definitions().end()?found->second.label:std::u16string(firstActions[i],firstActions[i]+std::strlen(firstActions[i]));
+            actionToolbar.configure(i,firstActions[i],std::move(label),available,i==0);
+        }
     }
     if(!startupPump())return;
     MeshHandleCache meshCache;
@@ -5109,6 +5118,14 @@ void runVisualizerImpl(soe::SoeSession* zoneSession, soe::MessageDispatcher* dis
             auto notice=[&](std::u16string text){clientcommon::ChatLine line;line.text=std::move(text);line.delivery=clientcommon::ChatLine::Delivery::CurrentTab;chatLog->append(std::move(line));};
             auto feedback=[&](clientcommon::ChatLine line){line.delivery=clientcommon::ChatLine::Delivery::CurrentTab;chatLog->append(std::move(line));};
             auto selected=targetSelection.selected(inspectionTargets);chatContext.target=selected&&selected->resolved?selected->id:0;
+            auto submitParsed=[&](const dummyclient::ParsedCommand& parsed)->bool{
+                if(!chatContext.actor||!networkThread||networkThread->failed())return false;
+                if(auto ticket=commandSubmission->reserve(chatContext.actor,parsed.target,parsed.name,chatElapsed())){
+                    auto payload=swgproto::buildCommandQueueEnqueue(ticket->actor,ticket->action,parsed.name,ticket->target,parsed.arguments);
+                    const bool accepted=networkThread->tryEnqueueCommand(std::move(payload));commandSubmission->admitted(*ticket,accepted);return accepted;
+                }
+                return false;
+            };
             if(auto draft=window.takeTextSubmission()){
                 bool accepted=false;dummyclient::ParsedTell tell;
                 std::optional<std::u16string> selectedPlayerName;
@@ -5141,11 +5158,18 @@ void runVisualizerImpl(soe::SoeSession* zoneSession, soe::MessageDispatcher* dis
                 else if(parsed.empty)accepted=true;
                 else if(!parsed.error.empty())notice(std::move(parsed.error));
                 else if(!chatContext.actor||!networkThread||networkThread->failed())notice(u"The world is not ready to send commands. Your draft has been kept.");
-                else if(auto ticket=commandSubmission->reserve(chatContext.actor,parsed.target,parsed.name,chatElapsed())){
-                    auto payload=swgproto::buildCommandQueueEnqueue(ticket->actor,ticket->action,parsed.name,ticket->target,parsed.arguments);
-                    accepted=networkThread->tryEnqueueCommand(std::move(payload));commandSubmission->admitted(*ticket,accepted);
-                }else notice(u"Please wait before sending another command. Your draft has been kept.");
+                else if(!(accepted=submitParsed(parsed)))notice(u"Please wait before sending another command. Your draft has been kept.");
                 window.finishTextSubmission(accepted);
+            }
+            std::optional<size_t> action=window.takeActionSelection();
+            for(size_t i=0;i<clientcommon::ActionToolbar::count;++i)if(window.takeKeyPress(int('1'+i)))action=i;
+            if(action){
+                if(auto name=actionToolbar.request(*action,chatContext.target!=0,window.textFocus().active(),chatElapsed())){
+                    std::u16string typed=u"/";typed.append(name->begin(),name->end());
+                    auto parsed=commandCatalog->parse(typed,chatContext);
+                    if(!parsed.error.empty())notice(std::move(parsed.error));
+                    else if(!submitParsed(parsed))notice(u"The action could not be sent. Please try again.");
+                }
             }
             if(tellSubmission)for(const auto& event:tellSubmission->drain(chatElapsed())){
                 if(event.kind==clientcommon::TellEvent::Kind::Result){auto line=clientcommon::tellLine(clientcommon::tellResultKey(event.result,event.ticket.reply),event.ticket.recipient,event.result?u"":event.ticket.text,tellSubmission->context().self);line.delivery=clientcommon::ChatLine::Delivery::AllTabs;chatLog->append(std::move(line));}
@@ -5157,6 +5181,7 @@ void runVisualizerImpl(soe::SoeSession* zoneSession, soe::MessageDispatcher* dis
                 }
             }
             for(const auto& event:commandSubmission->drain(chatElapsed())){
+                actionToolbar.onEvent(event,chatElapsed());
                 if(auto text=commandCatalog->errorText(event))notice(std::move(*text));
                 if(chatJournal&&chatJournalEvents<512){++chatJournalEvents;
                     const char* name=event.kind==clientcommon::CommandEvent::Kind::Admitted?"command_admitted":event.kind==clientcommon::CommandEvent::Kind::TransportRejected?"command_not_sent":event.kind==clientcommon::CommandEvent::Kind::QueueCleared?"command_queue_clear":"command_no_reply";
@@ -5206,6 +5231,7 @@ void runVisualizerImpl(soe::SoeSession* zoneSession, soe::MessageDispatcher* dis
             for(size_t i=0;i<previousRects.size();++i){const auto& r=previousRects[i];if(hoverX>=r[0]&&hoverX<r[2]&&hoverY>=r[1]&&hoverY<r[3]){hover=i;break;}}
             window.setTextEntryRect(targetHud->drawChat(chatSelectedPresentation,window.textFocus(),window.pixelDensity(),window.takeChatWheelDelta(),chatLog?chatLog->activeTab():0,hover));window.setChatAreaRect(targetHud->chatAreaRect());window.setChatTabRects(targetHud->chatTabRects());
             targetHud->drawNotices(chatSnapshot,chatPresentation,window.pixelDensity());
+            window.setActionRects(targetHud->drawActions(actionToolbar,chatContext.target!=0,chatElapsed(),window.pixelDensity()));
             if(chatJournal&&chatJournalEvents<512&&targetHud->noticeState()){
                 const auto& state=*targetHud->noticeState();std::ostringstream notice;
                 notice<<"\"rows\":"<<state.rows().size()<<",\"admissions\":"<<state.admissions();

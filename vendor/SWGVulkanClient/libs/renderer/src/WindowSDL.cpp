@@ -45,7 +45,7 @@ bool Window::pumpMessages() {
     while(SDL_PollEvent(&event)) {
         const bool wasText=textFocus_.active();
         if(event.type==SDL_EVENT_QUIT || (event.type==SDL_EVENT_WINDOW_CLOSE_REQUESTED&&event.window.windowID==SDL_GetWindowID(hwnd_))) quit_=true;
-        if(event.type==SDL_EVENT_WINDOW_FOCUS_LOST&&event.window.windowID==SDL_GetWindowID(hwnd_)) {textFocus_.loseWindowFocus();keyPresses_.clear();for(int i=0;i<3;++i){dragDx_[i]=dragDy_[i]=0;dragging_[i]=false;}accumDx_=accumDy_=accumWheelDelta_=0;haveLastMouse_=false;}
+        if(event.type==SDL_EVENT_WINDOW_FOCUS_LOST&&event.window.windowID==SDL_GetWindowID(hwnd_)) {textFocus_.loseWindowFocus();keyPresses_.clear();actionSelection_.reset();for(int i=0;i<3;++i){dragDx_[i]=dragDy_[i]=0;dragging_[i]=false;}accumDx_=accumDy_=accumWheelDelta_=0;haveLastMouse_=false;}
         if(event.type==SDL_EVENT_KEY_UP&&event.key.windowID==SDL_GetWindowID(hwnd_))textFocus_.keyUp(inputKey(event.key.key));
         if(event.type==SDL_EVENT_KEY_DOWN&&event.key.windowID==SDL_GetWindowID(hwnd_)) {
             int key=inputKey(event.key.key);const bool shortcut=event.key.mod&(SDL_KMOD_CTRL|SDL_KMOD_GUI);
@@ -66,9 +66,11 @@ bool Window::pumpMessages() {
                     const bool input=x>=textEntryRect_[0]&&x<textEntryRect_[2]&&y>=textEntryRect_[1]&&y<textEntryRect_[3];
                     bool tab=false;
                     if(i==0)for(size_t t=0;t<chatTabRects_.size();++t){const auto& r=chatTabRects_[t];if(x>=r[0]&&x<r[2]&&y>=r[1]&&y<r[3]){chatTabSelection_=t;tab=true;break;}}
-                    if(i==0&&!tab){if(input)textFocus_.focus();else textFocus_.blur();}
+                    bool action=false;
+                    if(i==0&&!tab)for(size_t a=0;a<actionRects_.size();++a){const auto& r=actionRects_[a];if(x>=r[0]&&x<r[2]&&y>=r[1]&&y<r[3]){actionSelection_=a;action=true;break;}}
+                    if(i==0&&!tab&&!action){if(input)textFocus_.focus();else textFocus_.blur();}
                     const bool overChat=x>=chatAreaRect_[0]&&x<chatAreaRect_[2]&&y>=chatAreaRect_[1]&&y<chatAreaRect_[3];
-                    if(overChat||tab)textFocus_.blockUntilRelease(0x1000+i);
+                    if(overChat||tab||action)textFocus_.blockUntilRelease(0x1000+i);
                 }else textFocus_.keyUp(0x1000+i);
                 // Clicks carry an authoritative position even when SDL has
                 // coalesced or omitted the preceding mouse-motion event.
