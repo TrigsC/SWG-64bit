@@ -1,8 +1,8 @@
-# SWG-64bit — Apple Silicon / SWGEmu Pre-CU
+# SWG-64bit — Windows and Apple Silicon / SWGEmu Pre-CU Client
 
 An experimental, native ARM64 and 64-bit SWGEmu client built from the
 [SWGVulkanClient](https://github.com/maddogg221/SWGVulkanClient) codebase. The
-current Mac app renders a world, handles movement and early HUD/chat features,
+current Windows and Mac app renders a world, handles movement and early HUD/chat features,
 and remains **incomplete**. It is not affiliated with SWGEmu, Lucasfilm,
 Daybreak, or the upstream maintainer. See [LICENSE.md](LICENSE.md): the upstream
 code permits personal, non-commercial forks and redistribution under its terms.
@@ -22,13 +22,14 @@ does not make the Mac launcher available on Windows.
 
 Open your owned SWGEmu installation folder in Codex and ask:
 
-> Set up this repository for Windows. Read AGENTS.md and windows/README.md.
-> Inventory this machine first. If I only need a test binary or disk space is
-> limited, obtain the successful Windows CI artifact for the intended commit.
+> Set up this  https://github.com/TrigsC/SWG-64bit.git repository for Windows.
+> Read AGENTS.md and windows/README.md.Inventory this machine first. If I only need a test binary obtain the successful Windows CI
+> artifact for the intended commit.
 > Otherwise use setup_windows.py to build Release and package_windows.py to
 > create a test bundle. Generate the local object-template index from my own
 > archives, then check the launcher and synthetic Vulkan probe without logging
-> into a game server. Report which checks passed and their limits.
+> into a game server. Report which checks passed and their limits. If all are successful, Show me three available GitHub issues suitable
+> for this Machine, recommend one, and wait for me to say “work on it.”
 
 Windows build commands, run from the repository root:
 
