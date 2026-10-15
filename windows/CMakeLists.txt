@@ -1,0 +1,35 @@
+cmake_minimum_required(VERSION 3.25)
+project(SWGWindows LANGUAGES CXX)
+if(NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8 OR NOT CMAKE_GENERATOR_PLATFORM STREQUAL "x64")
+    message(FATAL_ERROR "Use the windows-x64 preset with the Visual Studio 2022 x64 toolchain")
+endif()
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+enable_testing()
+get_filename_component(MODERN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+add_subdirectory("${MODERN_DIR}/vendor/SWGVulkanClient" swg)
+
+function(swg_core_test name source)
+    add_executable(${name} "${MODERN_DIR}/${source}")
+    target_link_libraries(${name} PRIVATE clientcommon::clientcommon)
+    add_test(NAME ${name} COMMAND ${name})
+    set_tests_properties(${name} PROPERTIES TIMEOUT 30 LABELS "source")
+endfunction()
+swg_core_test(native_login_input live-client/src/login_input_tests.cpp)
+swg_core_test(native_movement_reporting live-client/movement/movement_tests.cpp)
+swg_core_test(remote_motion_interpolation live-client/interpolation/motion_tests.cpp)
+swg_core_test(native_target_selection live-client/targeting/target_tests.cpp)
+target_link_libraries(native_target_selection PRIVATE doctest::doctest)
+add_test(NAME windows_client_help COMMAND dummyclient --help)
+set_tests_properties(windows_client_help PROPERTIES TIMEOUT 15 LABELS "source;smoke"
+    PASS_REGULAR_EXPRESSION "Usage: dummyclient")
+
+if(SWG_BUILD_RENDERER)
+    add_executable(windows-client-smoke smoke.cpp)
+    target_link_libraries(windows-client-smoke PRIVATE renderer::renderer)
+    add_test(NAME windows_window_smoke COMMAND windows-client-smoke --window-only)
+    set_tests_properties(windows_window_smoke PROPERTIES TIMEOUT 20 LABELS "source;smoke"
+        PASS_REGULAR_EXPRESSION "WINDOW_SMOKE_PASS")
+    # A graphics-capable Windows host must explicitly request --render.
+    # Hosted CI checks window creation without claiming a Vulkan presentation pass.
+endif()
