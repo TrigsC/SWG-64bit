@@ -1,6 +1,7 @@
 from pathlib import Path
 import plistlib
-app=Path(__file__).resolve().parent/'SWG Native Client.app'
+import os
+app=Path(os.environ.get('SWG_CLIENT_APP_PATH',Path(__file__).resolve().parent/'SWG Native Client.app'))
 info={'CFBundleExecutable':'SWGNativeClient','CFBundleIdentifier':'local.swg.nativeclient',
       'CFBundleName':'SWG Native Client','CFBundleDisplayName':'SWG Native Client','CFBundlePackageType':'APPL',
       'CFBundleShortVersionString':'0.2.24','CFBundleVersion':'26','LSMinimumSystemVersion':'26.0','NSHighResolutionCapable':True}

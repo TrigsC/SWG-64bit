@@ -227,6 +227,40 @@ void TargetHud::draw(const clientcommon::InspectionTarget* target,clientcommon::
     text(assets_.targetLabel,x+assets_.targetLabelX*d,y+assets_.targetLabelY*d,assets_.targetLabelWidth*d,assets_.targetLabelHeight*d,d,false,assets_.labelColor);
     text(name_,x+assets_.targetNameX*d,y+assets_.targetNameY*d,assets_.targetNameWidth*d+delta,assets_.targetNameHeight*d,d,true,assets_.nameColor);
 }
+std::vector<std::array<int,4>> TargetHud::drawActions(const clientcommon::ActionToolbar& actions,bool hasTarget,uint64_t now,float d){
+    std::vector<std::array<int,4>> rects;
+    if(caretTexture_.image==VK_NULL_HANDLE)return rects;
+    if(!std::isfinite(d)||d<=0)d=1;
+    const int w=int(gfx_.renderWidth()/d),h=int(gfx_.renderHeight()/d);
+    if(w<420||h<110)return rects;
+    gfx_.beginOverlayPass();
+    const int width=84,height=39,gap=5,x0=w-int(clientcommon::ActionToolbar::count)*(width+gap)-12,y=h-height-12;
+    auto solid=[&](float x,float y,float sw,float sh,std::array<float,4> color){
+        gfx_.drawLabel({x+sw/2,y+sh/2,0},sw,sh,{1,0,0},{0,-1,0},caretTexture_,{0,0,1,1},
+            {color[0],color[1],color[2],color[3]});
+    };
+    for(size_t i=0;i<clientcommon::ActionToolbar::count;++i){
+        const int x=x0+int(i)*(width+gap);rects.push_back({int(x*d),int(y*d),int((x+width)*d),int((y+height)*d)});
+        const auto state=actions.state(i,hasTarget,now);
+        const bool enabled=state==clientcommon::ActionToolbar::State::Ready||state==clientcommon::ActionToolbar::State::Rejected||state==clientcommon::ActionToolbar::State::Unknown;
+        const std::array<float,4> fill=state==clientcommon::ActionToolbar::State::Rejected?std::array<float,4>{.48f,.13f,.12f,.82f}:
+            state==clientcommon::ActionToolbar::State::Pending?std::array<float,4>{.32f,.28f,.10f,.82f}:
+            enabled?std::array<float,4>{.12f,.25f,.34f,.82f}:std::array<float,4>{.16f,.17f,.18f,.72f};
+        solid(x*d,y*d,width*d,height*d,fill);
+        auto label=actions.slot(i).label;if(label.size()>11)label.resize(11);
+        text(label,(x+5)*d,(y+4)*d,(width-10)*d,16*d,d,false,{1,1,1,1});
+        std::u16string status=u"[";status+=char16_t(u'1'+i);status+=u"] ";
+        if(state==clientcommon::ActionToolbar::State::Pending)status+=u"pending";
+        else if(state==clientcommon::ActionToolbar::State::Cooldown)status+=u"wait";
+        else if(state==clientcommon::ActionToolbar::State::NeedsTarget)status+=u"target";
+        else if(state==clientcommon::ActionToolbar::State::Rejected)status+=u"rejected";
+        else if(state==clientcommon::ActionToolbar::State::Unknown)status+=u"unknown";
+        else if(state==clientcommon::ActionToolbar::State::Unavailable)status+=u"off";
+        else status+=u"ready";
+        text(status,(x+5)*d,(y+22)*d,(width-10)*d,15*d,d,false,{.85f,.87f,.82f,1});
+    }
+    return rects;
+}
 std::array<int,4> TargetHud::drawChat(const clientcommon::ChatSnapshot& snapshot,const renderer::TextFocus& input,float d,int wheelDelta,std::optional<size_t> activeTab,std::optional<size_t> hoveredTab) {
     if(!chat_)return {};if(!std::isfinite(d)||d<=0)d=1;gfx_.beginOverlayPass();
     const int screenW=int(gfx_.renderWidth()/d),screenH=int(gfx_.renderHeight()/d);const auto& source=*chat_;

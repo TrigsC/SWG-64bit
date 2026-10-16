@@ -56,6 +56,8 @@ public:
     int takeChatWheelDelta(){int delta=chatWheel_;chatWheel_=0;return delta;}
     void setChatTabRects(std::vector<std::array<int,4>> rects){if(rects.size()>32)rects.resize(32);chatTabRects_=std::move(rects);}
     std::optional<size_t> takeChatTabSelection(){auto value=chatTabSelection_;chatTabSelection_.reset();return value;}
+    void setActionRects(std::vector<std::array<int,4>> rects){if(rects.size()>8)rects.resize(8);actionRects_=std::move(rects);}
+    std::optional<size_t> takeActionSelection(){auto value=actionSelection_;actionSelection_.reset();return value;}
 
     // Virtual-key code (VK_...) queried via GetAsyncKeyState, gated on this
     // window actually being the foreground/focused window (real bug found
@@ -105,6 +107,9 @@ private:
     int chatWheel_=0;
     std::vector<std::array<int,4>> chatTabRects_;
     std::optional<size_t> chatTabSelection_;
+    std::vector<std::array<int,4>> actionRects_;
+    std::optional<size_t> actionSelection_;
+    bool actionMouseHeld_=false;
 
     // Updated from WM_MOUSEMOVE inside wndProc(), drained by
     // takeMouseDelta(). Raw screen-space deltas are computed by comparing

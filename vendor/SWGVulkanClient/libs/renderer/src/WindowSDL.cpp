@@ -27,7 +27,9 @@ std::string utf8(const wchar_t* title) {
 Window::Window(int width, int height, const wchar_t* title) {
     if(focusWindow) throw std::runtime_error("Window: input API supports one window per process");
     if(!SDL_Init(SDL_INIT_VIDEO)) throw failure("SDL_Init");
-    if(!SDL_Vulkan_LoadLibrary(SWG_VULKAN_LIBRARY_PATH)) {auto error=failure("SDL_Vulkan_LoadLibrary");SDL_QuitSubSystem(SDL_INIT_VIDEO);throw error;}
+    // The executable already links Vulkan. Let SDL use that loader instead of
+    // a build-tree path that becomes invalid when the app is moved or rebuilt.
+    if(!SDL_Vulkan_LoadLibrary(nullptr)) {auto error=failure("SDL_Vulkan_LoadLibrary");SDL_QuitSubSystem(SDL_INIT_VIDEO);throw error;}
     hwnd_=SDL_CreateWindow(utf8(title).c_str(),width,height,SDL_WINDOW_VULKAN|SDL_WINDOW_RESIZABLE|SDL_WINDOW_HIGH_PIXEL_DENSITY);
     if(!hwnd_) {auto error=failure("SDL_CreateWindow");SDL_QuitSubSystem(SDL_INIT_VIDEO);throw error;}
     focusWindow=hwnd_;inputOwner=this;SDL_GetWindowSizeInPixels(hwnd_,&width_,&height_);
@@ -45,7 +47,7 @@ bool Window::pumpMessages() {
     while(SDL_PollEvent(&event)) {
         const bool wasText=textFocus_.active();
         if(event.type==SDL_EVENT_QUIT || (event.type==SDL_EVENT_WINDOW_CLOSE_REQUESTED&&event.window.windowID==SDL_GetWindowID(hwnd_))) quit_=true;
-        if(event.type==SDL_EVENT_WINDOW_FOCUS_LOST&&event.window.windowID==SDL_GetWindowID(hwnd_)) {textFocus_.loseWindowFocus();keyPresses_.clear();for(int i=0;i<3;++i){dragDx_[i]=dragDy_[i]=0;dragging_[i]=false;}accumDx_=accumDy_=accumWheelDelta_=0;haveLastMouse_=false;}
+        if(event.type==SDL_EVENT_WINDOW_FOCUS_LOST&&event.window.windowID==SDL_GetWindowID(hwnd_)) {textFocus_.loseWindowFocus();keyPresses_.clear();actionSelection_.reset();for(int i=0;i<3;++i){dragDx_[i]=dragDy_[i]=0;dragging_[i]=false;}accumDx_=accumDy_=accumWheelDelta_=0;haveLastMouse_=false;}
         if(event.type==SDL_EVENT_KEY_UP&&event.key.windowID==SDL_GetWindowID(hwnd_))textFocus_.keyUp(inputKey(event.key.key));
         if(event.type==SDL_EVENT_KEY_DOWN&&event.key.windowID==SDL_GetWindowID(hwnd_)) {
             int key=inputKey(event.key.key);const bool shortcut=event.key.mod&(SDL_KMOD_CTRL|SDL_KMOD_GUI);
@@ -66,9 +68,11 @@ bool Window::pumpMessages() {
                     const bool input=x>=textEntryRect_[0]&&x<textEntryRect_[2]&&y>=textEntryRect_[1]&&y<textEntryRect_[3];
                     bool tab=false;
                     if(i==0)for(size_t t=0;t<chatTabRects_.size();++t){const auto& r=chatTabRects_[t];if(x>=r[0]&&x<r[2]&&y>=r[1]&&y<r[3]){chatTabSelection_=t;tab=true;break;}}
-                    if(i==0&&!tab){if(input)textFocus_.focus();else textFocus_.blur();}
+                    bool action=false;
+                    if(i==0&&!tab)for(size_t a=0;a<actionRects_.size();++a){const auto& r=actionRects_[a];if(x>=r[0]&&x<r[2]&&y>=r[1]&&y<r[3]){actionSelection_=a;action=true;break;}}
+                    if(i==0&&!tab&&!action){if(input)textFocus_.focus();else textFocus_.blur();}
                     const bool overChat=x>=chatAreaRect_[0]&&x<chatAreaRect_[2]&&y>=chatAreaRect_[1]&&y<chatAreaRect_[3];
-                    if(overChat||tab)textFocus_.blockUntilRelease(0x1000+i);
+                    if(overChat||tab||action)textFocus_.blockUntilRelease(0x1000+i);
                 }else textFocus_.keyUp(0x1000+i);
                 // Clicks carry an authoritative position even when SDL has
                 // coalesced or omitted the preceding mouse-motion event.

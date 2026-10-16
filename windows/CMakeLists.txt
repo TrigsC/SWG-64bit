@@ -24,6 +24,8 @@ swg_core_test(native_movement_reporting live-client/movement/movement_tests.cpp)
 swg_core_test(remote_motion_interpolation live-client/interpolation/motion_tests.cpp)
 swg_core_test(native_target_selection live-client/targeting/target_tests.cpp)
 target_link_libraries(native_target_selection PRIVATE doctest::doctest)
+swg_core_test(native_action_toolbar live-client/actions/action_tests.cpp)
+target_link_libraries(native_action_toolbar PRIVATE doctest::doctest)
 add_test(NAME windows_client_help COMMAND dummyclient --help)
 set_tests_properties(windows_client_help PROPERTIES TIMEOUT 15 LABELS "source;smoke"
     PASS_REGULAR_EXPRESSION "Usage: dummyclient")
