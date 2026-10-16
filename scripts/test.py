@@ -17,7 +17,7 @@ SOURCE_ONLY = (
     "native_transport_lifecycle", "native_movement_reporting",
     "remote_motion_interpolation", "reliable_soe_wire", "reliable_soe_windows",
     "exterior_floor_support", "accepted_cell_crossings", "precise_spatial_frames",
-    "native_target_selection", "native_action_toolbar"
+    "native_target_selection", "native_action_toolbar", "stationary_scene_seeds"
 )
 LOOPBACK = {"native_transport_lifecycle", "reliable_soe_wire"}
 

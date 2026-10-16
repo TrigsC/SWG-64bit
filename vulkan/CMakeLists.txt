@@ -103,6 +103,11 @@ target_compile_features(frame-tests PRIVATE cxx_std_20)
 target_link_libraries(frame-tests PRIVATE worldmodel::worldmodel clientcommon::clientcommon renderer::renderer doctest::doctest)
 add_test(NAME precise_spatial_frames COMMAND frame-tests)
 
+add_executable(scene-seed-tests src/scene_seed_tests.cpp)
+target_compile_features(scene-seed-tests PRIVATE cxx_std_20)
+target_link_libraries(scene-seed-tests PRIVATE worldmodel::worldmodel clientcommon::clientcommon doctest::doctest)
+add_test(NAME stationary_scene_seeds COMMAND scene-seed-tests)
+
 add_test(NAME precise_frame_tre_geometry COMMAND swg-offline-world --frame-audit "${CMAKE_CURRENT_BINARY_DIR}/frame-asset-audit.json")
 add_test(NAME precise_frame_telemetry_analysis COMMAND "${MODERN_DIR}/tools/python/bin/python" "${MODERN_DIR}/live-client/exploration/frames/analyze_tests.py")
 

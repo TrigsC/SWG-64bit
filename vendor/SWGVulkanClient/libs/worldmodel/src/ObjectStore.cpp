@@ -42,6 +42,7 @@
 #include "worldmodel/StaticObject.h"
 #include "worldmodel/TangibleObject.h"
 #include "worldmodel/WeaponObject.h"
+#include "worldmodel/SpatialTransform.h"
 
 namespace worldmodel {
 
@@ -717,6 +718,12 @@ void ObjectStore::applyPostureMessage(uint64_t objectId, const swgproto::Posture
 
 void ObjectStore::seedPosition(uint64_t objectId, float x, float y, float z, float quatX,
                                 float quatY, float quatZ, float quatW, uint32_t objectCrc) {
+    // A malformed scene-create must not make a stationary object visible at
+    // an invented position, or replace an earlier valid seed/movement pose.
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z) ||
+        !normalizedRotation({quatX, quatY, quatZ, quatW})) {
+        return;
+    }
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = objects_.find(objectId);
     if (it == objects_.end() || std::visit([](const auto& obj) {
@@ -731,6 +738,12 @@ void ObjectStore::seedPosition(uint64_t objectId, float x, float y, float z, flo
         return;
     }
     WorldObject& obj = std::visit([](auto& o) -> WorldObject& { return o; }, it->second);
+    // Scene creation supplies an initial pose. It must not rewind an object
+    // that already received a live transform (including a parented one).
+    if (obj.transformMessagesSeen != 0) {
+        if (obj.objectCrc == 0) obj.objectCrc = objectCrc;
+        return;
+    }
     obj.x = x;
     obj.y = y;
     obj.z = z;
