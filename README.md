@@ -1,8 +1,8 @@
-# SWG-64bit — Windows and Apple Silicon / SWGEmu Pre-CU Client
+# SWG-64bit — Apple Silicon / SWGEmu Pre-CU
 
 An experimental, native ARM64 and 64-bit SWGEmu client built from the
 [SWGVulkanClient](https://github.com/maddogg221/SWGVulkanClient) codebase. The
-current Windows and Mac app renders a world, handles movement and early HUD/chat features,
+current Mac app renders a world, handles movement and early HUD/chat features,
 and remains **incomplete**. It is not affiliated with SWGEmu, Lucasfilm,
 Daybreak, or the upstream maintainer. See [LICENSE.md](LICENSE.md): the upstream
 code permits personal, non-commercial forks and redistribution under its terms.
@@ -22,14 +22,13 @@ does not make the Mac launcher available on Windows.
 
 Open your owned SWGEmu installation folder in Codex and ask:
 
-> Set up this  https://github.com/TrigsC/SWG-64bit.git repository for Windows.
-> Read AGENTS.md and windows/README.md.Inventory this machine first. If I only need a test binary obtain the successful Windows CI
-> artifact for the intended commit.
+> Set up this repository for Windows. Read AGENTS.md and windows/README.md.
+> Inventory this machine first. If I only need a test binary or disk space is
+> limited, obtain the successful Windows CI artifact for the intended commit.
 > Otherwise use setup_windows.py to build Release and package_windows.py to
 > create a test bundle. Generate the local object-template index from my own
 > archives, then check the launcher and synthetic Vulkan probe without logging
-> into a game server. Report which checks passed and their limits. If all are successful, Show me three available GitHub issues suitable
-> for this Machine, recommend one, and wait for me to say “work on it.”
+> into a game server. Report which checks passed and their limits.
 
 Windows build commands, run from the repository root:
 
@@ -115,6 +114,11 @@ python3 modernization/scripts/setup.py
 ```
 
 The resulting app is `modernization/live-client/SWG Native Client.app`.
+When testing a Mac change, open that exact packaged app after the build; a
+passing source suite does not prove the app will run after its temporary build
+directory is removed. Check the signed app's bundled shaders and libraries,
+then quit/reopen it and complete a permitted world load when a test server is
+available. Record package and live results separately from source tests.
 Credentials are entered in its UI and are not saved by the launcher. The
 server address is editable. By default it reads the local `swgemu_login.cfg`;
 the setup script does not contact any server. Use only servers that permit this

@@ -60,6 +60,12 @@ renderer. Windows checks also exercise private process handoff and launcher/
 world-window startup; Vulkan presentation and live login remain separate. Keep locally
 generated material in ignored `tools/local-assets/`.
 
+For Mac app changes, test the packaged `live-client/SWG Native Client.app` as
+well as the source build. Verify its signature and bundled shaders/libraries
+after the temporary build directory is unavailable; if you have a permitted
+test server, quit/reopen that same app and confirm a world load. Report these
+as separate checks in the PR. See [SMOKE_TEST.md](SMOKE_TEST.md).
+
 `login.swgemu.com` is not a substitute for a controlled integration server:
 the public service can change and may restrict unofficial clients. Use local
 fixture/replay tests for PR checks. A public login requires current operator

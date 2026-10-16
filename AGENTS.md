@@ -89,3 +89,12 @@ Windows test failure. When local `.tre` files are available and relevant, run
 live behavior. Keep the upstream license and attribution intact. Keep generated
 dependencies, builds and archives out of Git. Never claim complete client parity
 from a passing unit test.
+
+For Mac runtime or packaging changes, validate the exact `.app` the user will
+open, not only the build-tree executable. If updating an existing app, set
+`SWG_CLIENT_APP_PATH` to its absolute path when running `live-client/build-client.sh`;
+do not create a second client bundle by default. After source tests, verify its
+code signature and bundled shaders/libraries with the temporary build directory
+unavailable. Quit and reopen the app and complete a permitted world load when
+credentials and a test server are available. Report source, packaged-app, and
+live results separately; mark unavailable checks **Not run**.
