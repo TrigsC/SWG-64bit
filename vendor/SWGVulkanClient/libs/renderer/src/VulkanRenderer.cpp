@@ -19,6 +19,9 @@
 #include <chrono>
 #include <sstream>
 #include <iomanip>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 #ifndef _WIN32
 #include "TextRasterizer.h"
 #endif
@@ -1832,6 +1835,20 @@ void VulkanRenderer::createTerrainPipelineObjects() {
 VkShaderModule VulkanRenderer::loadShaderModule(const char* spirvFileBaseName,
                                                  const char* entryPoint) const {
     std::filesystem::path shaderDirectory = SWG_SHADER_SPV_DIR;
+#ifdef __APPLE__
+    // Packaged world helpers must load their own shaders, not the build
+    // directory baked into SWG_SHADER_SPV_DIR (which can be deleted).
+    uint32_t executablePathSize = 1024;
+    std::vector<char> executablePath(executablePathSize);
+    if (_NSGetExecutablePath(executablePath.data(), &executablePathSize) != 0) {
+        executablePath.resize(executablePathSize);
+    }
+    if (_NSGetExecutablePath(executablePath.data(), &executablePathSize) == 0) {
+        auto bundled = std::filesystem::path(executablePath.data()).parent_path().parent_path() /
+                       "Resources" / "shaders";
+        if (std::filesystem::is_directory(bundled)) shaderDirectory = std::move(bundled);
+    }
+#endif
 #ifdef _WIN32
     // A downloaded test bundle must not depend on the CI checkout path.
     std::wstring executable(32768, L'\0');
